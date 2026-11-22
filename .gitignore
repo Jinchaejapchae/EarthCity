@@ -1,2 +1,8 @@
 node_modules/
 *.png
+
+# Godot
+godot/.godot/
+!godot/assets/**/*.png
+build/
+*.tmp

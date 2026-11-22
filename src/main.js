@@ -793,51 +793,131 @@ const pedGeo = { gun: new THREE.BoxGeometry(0.1, 0.12, 0.4).translate(0, -0.36, 
 const SHIRT = ['#e63946', '#f1faee', '#457b9d', '#2a9d8f', '#e9c46a', '#f4a261', '#9b5de5', '#00bbf9', '#f15bb5', '#3a3a3a', '#8ac926'];
 const PANTS = ['#1d3557', '#2b2d42', '#6c584c', '#3d405b', '#495057', '#8d99ae'];
 const SKIN = ['#f1c9a5', '#e0ac82', '#b07a52', '#7d5636'];
-const HAIR = ['#1b1b1b', '#3b2a1e', '#6b4a2b', '#c9a15b'];
-// 사람: SkinnedMesh(뼈대 11개, 메시 1개 = draw call 1개). 부위별 vertex color + 뼈대에 rigid 바인딩. NPC 는 변형 풀에서 지오메트리 공유
-const pedMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
+const HAIR = ['#1b1b1b', '#3b2a1e', '#6b4a2b', '#c9a15b', '#4a2c1a', '#8c8c8c'];
+// 사람: SkinnedMesh(뼈대 11개, 메시 1개 = draw call 1개). 부위별 vertex color(+굽힘 부위는 두 뼈에 가중치) + 구워 넣은 AO. NPC 는 변형 풀에서 지오메트리 공유
+// 7.5등신 비율, 곡선(lathe) 몸통/팔다리, 목/어깨/손/신발, 얼굴(눈·눈썹·코·입·귀), 머리 모양 4종, 안경, 옷(깃/벨트/밑단/소매/코트/치마/배낭)
+const pedMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
 const PB = { hips: 0, chest: 1, head: 2, thL: 3, shL: 4, thR: 5, shR: 6, upL: 7, fL: 8, upR: 9, fR: 10 };
+const pstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const pcm = new Map(), pcol = h => { let c = pcm.get(h); if (!c) { c = new THREE.Color(h); pcm.set(h, c); } return c; };
 function pedBuild(o) {
-  const P = [], add = (geo, col, bone) => P.push([geo, col, bone]);
+  const PSEG = quality === 'low' ? 8 : quality === 'mid' ? 10 : 14, parts = [];
+  const add = (geo, col, w, mod) => parts.push([geo, col, w, mod]);
   const bx = (w, h, d, x, y, z, col, bn) => add(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col, bn);
-  const sp = (r, sx, sy, sz, x, y, z, col, bn, ws = 10, hs = 8) => add(new THREE.SphereGeometry(r, ws, hs).scale(sx, sy, sz).translate(x, y, z), col, bn);
-  const cp = (r, len, sx, sz, x, y, z, col, bn) => add(new THREE.CapsuleGeometry(r, len, 4, 8).scale(sx, 1, sz).translate(x, y, z), col, bn);
-  const { shirt, pants, skin, hair, style, dress, shorts, longSl, pack, coat, pcol } = o;
-  add(new THREE.CapsuleGeometry(0.19, 0.2, 4, 10).scale(1.5, 1, 0.95).translate(0, 1.42, 0), shirt, PB.chest);
-  add(new THREE.CapsuleGeometry(0.155, 0.12, 4, 10).scale(1.35, 1, 0.98).translate(0, 1.07, 0), shirt, PB.hips);
-  bx(0.44, 0.22, 0.29, 0, 0.88, 0, dress ? skin : pants, PB.hips); bx(0.42, 0.04, 0.28, 0, 0.99, 0, '#1b1b1b', PB.hips);
-  add(new THREE.CylinderGeometry(0.065, 0.078, 0.14, 8).translate(0, 1.72, 0), skin, PB.head);
-  sp(0.185, 0.93, 1.1, 1, 0, 1.9, 0, skin, PB.head, 12, 9); sp(0.035, 0.6, 1, 1, -0.18, 1.89, 0, skin, PB.head, 6, 5); sp(0.035, 0.6, 1, 1, 0.18, 1.89, 0, skin, PB.head, 6, 5);
-  bx(0.04, 0.045, 0.03, -0.07, 1.91, 0.172, '#161616', PB.head); bx(0.04, 0.045, 0.03, 0.07, 1.91, 0.172, '#161616', PB.head);
-  bx(0.07, 0.014, 0.02, -0.07, 1.96, 0.176, hair, PB.head); bx(0.07, 0.014, 0.02, 0.07, 1.96, 0.176, hair, PB.head);
-  bx(0.05, 0.07, 0.05, 0, 1.86, 0.185, skin, PB.head); bx(0.07, 0.012, 0.02, 0, 1.8, 0.172, '#8a4a4a', PB.head);
-  add(new THREE.SphereGeometry(0.2, 12, 7, 0, Math.PI * 2, 0, Math.PI * 0.47).scale(0.97, 1.1, 1.03).translate(0, 1.91, -0.008), hair, PB.head);
-  if (style === 1) cp(0.12, 0.3, 1.4, 0.8, 0, 1.74, -0.12, hair, PB.head);
-  if (style === 2) sp(0.08, 1, 1, 1, 0, 2.05, -0.17, hair, PB.head, 8, 6);
-  if (dress) add(new THREE.CylinderGeometry(0.2, 0.31, 0.5, 12).translate(0, 0.78, 0), shirt, PB.hips);
-  if (coat) add(new THREE.CylinderGeometry(0.27, 0.31, 0.42, 10).translate(0, 0.86, 0), shirt, PB.hips);
-  if (pack) bx(0.34, 0.42, 0.17, 0, 1.38, -0.27, pcol, PB.chest);
-  for (const s of [-1, 1]) {
-    const L = s < 0, tx = s * 0.14, ax = s * 0.42, th = L ? PB.thL : PB.thR, sh = L ? PB.shL : PB.shR, ua = L ? PB.upL : PB.upR, fa = L ? PB.fL : PB.fR;
-    cp(0.105, 0.19, 1, 1, tx, 0.62, 0, dress || false ? skin : pants, th);
-    cp(0.088, 0.22, 1, 1, tx, 0.22, 0, dress || shorts ? skin : pants, sh); bx(0.17, 0.1, 0.32, tx, 0.05, 0.06, '#1d1d22', sh);
-    const sleeve = longSl || coat;
-    cp(0.068, 0.2, 1, 1, ax, 1.45, 0, sleeve ? shirt : skin, ua); if (!sleeve) add(new THREE.CylinderGeometry(0.09, 0.098, 0.2, 8).translate(ax, 1.53, 0), shirt, ua);
-    cp(0.064, 0.24, 1, 1, ax, 1.09, 0, sleeve ? shirt : skin, fa); sp(0.063, 1, 1, 1, ax, 0.88, 0, skin, fa, 8, 6);
+  const sp = (r, sx, sy, sz, x, y, z, col, bn, ws = 8, hs = 6) => add(new THREE.SphereGeometry(r, ws, hs).scale(sx, sy, sz).translate(x, y, z), col, bn);
+  const lat = (keys, sx, sz, cx, cz, seg, n) => { // y-r 키를 스플라인으로 부드럽게 돌려 만든 곡면(위아래 뚜껑 포함)
+    const pts = new THREE.SplineCurve(keys.map(([y, r]) => new THREE.Vector2(r, y))).getPoints(n);
+    for (const p of pts) p.x = Math.max(0, p.x);
+    pts.unshift(new THREE.Vector2(0, pts[0].y)); pts.push(new THREE.Vector2(0, pts[pts.length - 1].y));
+    const g = new THREE.LatheGeometry(pts, seg); g.scale(sx, 1, sz); g.translate(cx, 0, cz); return g;
+  };
+  const { shirt, pants, skin, hair, style = 0, dress, shorts, longSl, pack, coat, pcol: packCol = '#2b2d42', fem = false, shoe = '#1d1d22', tucked = true, glasses = false } = o;
+  const hw = fem ? 1.07 : 1, fw = fem ? 0.93 : 1, SEG = Math.max(8, PSEG);
+
+  // ---- 몸통(골반~어깨): 허리에서 두 뼈에 가중치를 나눠 비틀 때 안 찢어짐
+  const topAll = dress || coat, hemY = tucked ? 1.06 : 0.935;
+  const torsoK = [[0.86, 0.14], [0.92, 0.185 * hw], [1.0, 0.17 * hw], [1.1, 0.15], [1.17, 0.147], [1.26, 0.162 * fw], [1.36, 0.18 * fw], [1.46, 0.194 * fw], [1.54, 0.196 * fw], [1.59, 0.165 * fw], [1.625, 0.075]];
+  add(lat(torsoK, 1, 0.64, 0, 0, SEG + 2, 30),
+    (x, y) => topAll ? shirt : (y > hemY ? shirt : (tucked && y > 1.015 ? '#1c1a19' : pants)),
+    (x, y) => { const w = pstep(1.12, 1.28, y); return [[PB.hips, 1 - w], [PB.chest, w]]; },
+    (x, y, z) => (!tucked && !topAll && y > 0.93 && y < 1.03) ? [x * 1.035, y, z * 1.035] : [x, y, z]);
+  if (fem && !dress) { for (const s of [-1, 1]) sp(0.062, 1, 0.95, 0.9, s * 0.074, 1.4, 0.088, shirt, PB.chest, 8, 6); }
+  // 목 + 깃
+  add(lat([[1.55, 0.06], [1.62, 0.052], [1.7, 0.05], [1.74, 0.052]], 1, 1, 0, 0.008, 8, 8), skin,
+    (x, y) => { const w = pstep(1.6, 1.68, y); return [[PB.chest, 1 - w], [PB.head, w]]; });
+  add(new THREE.TorusGeometry(0.06, 0.011, 5, 12).rotateX(Math.PI / 2).scale(1, 1, 1.1).translate(0, 1.63, 0.004), coat ? '#1d1d1d' : shirt, PB.chest);
+
+  // ---- 머리
+  const hh = 0.135, hwd = 0.088, hd = 0.105, hy = 1.82;
+  const hs = (x, y) => { const dy = y - hy, t = dy < 0 ? -dy / hh : 0, w = hwd * (1 - 0.26 * Math.pow(t, 1.6)), q = 1 - (x / w) ** 2 - (dy / hh) ** 2; return hd * (dy < 0 ? 1 - 0.1 * t : 1) * Math.sqrt(Math.max(0, q)); };
+  const skull = new THREE.SphereGeometry(1, PSEG + 4, PSEG + 1), sp0 = skull.attributes.position;
+  for (let i = 0; i < sp0.count; i++) {
+    let x = sp0.getX(i), y = sp0.getY(i), z = sp0.getZ(i); const t = y < 0 ? -y : 0;
+    sp0.setXYZ(i, x * hwd * (1 - 0.26 * Math.pow(t, 1.6)), y * hh + hy, z * hd * (y < 0 ? 1 - 0.1 * t : 1));
   }
-  const gs = P.map(([geo, hex, bn]) => {
+  skull.computeVertexNormals();
+  const hairY = (x, z) => { let b = 1.89 - 0.15 * clamp((0.04 - z) / 0.14, 0, 1); if (Math.abs(x) > 0.07) b = Math.min(b, 1.855); return b; };
+  const hairC = style === 3 ? '#' + pcol(skin).clone().lerp(pcol(hair), 0.62).getHexString() : hair;
+  const hair0 = style === 3 ? 1.03 : 1.065;
+  { // 머리카락 껍질: 두개골 삼각형 중 머리선 위쪽을 조금 부풀려서 복사
+    const idx = skull.index.array, keep = [];
+    for (let i = 0; i < idx.length; i += 3) { let cx = 0, cy = 0, cz = 0; for (let k = 0; k < 3; k++) { cx += sp0.getX(idx[i + k]); cy += sp0.getY(idx[i + k]); cz += sp0.getZ(idx[i + k]); } cx /= 3; cy /= 3; cz /= 3; if (cy > hairY(cx, cz)) keep.push(idx[i], idx[i + 1], idx[i + 2]); }
+    const sh = skull.clone(); sh.setIndex(keep); sh.translate(0, -hy, 0); sh.scale(hair0, hair0, hair0); sh.translate(0, hy, -0.004); add(sh, hairC, PB.head);
+  }
+  add(skull, (x, y, z) => y > hairY(x, z) ? hairC : skin, PB.head);
+  if (style === 1) add(new THREE.CapsuleGeometry(0.093, 0.2, 4, 8).scale(1.08, 1, 0.62).translate(0, 1.67, -0.068), hair, PB.head);
+  if (style === 2) sp(0.056, 1, 1, 1, 0, 1.975, -0.085, hair, PB.head, 8, 6);
+  for (const s of [-1, 1]) sp(0.017, 0.5, 1.35, 0.9, s * (hwd + 0.001), 1.815, -0.006, skin, PB.head); // 귀
+  for (const s of [-1, 1]) { // 눈 / 눈썹
+    const ex = s * 0.036, ey = 1.835, z = hs(Math.abs(ex), ey);
+    sp(0.0135, 1.15, 0.85, 0.55, ex, ey, z - 0.003, '#efebe4', PB.head); sp(0.0072, 1, 1, 0.5, ex, ey, z + 0.002, '#2b1d14', PB.head);
+    bx(0.04, 0.008, 0.012, ex, 1.868, hs(Math.abs(ex), 1.868) - 0.004, hair, PB.head);
+  }
+  sp(0.01, 0.8, 2.3, 0.8, 0, 1.826, hs(0, 1.826), skin, PB.head); sp(0.0145, 0.95, 1.2, 1.1, 0, 1.804, hs(0, 1.804) + 0.006, skin, PB.head); // 코
+  sp(0.02, 1.4, 0.34, 0.55, 0, 1.748, hs(0, 1.748), '#b45c58', PB.head); sp(0.017, 1.25, 0.34, 0.55, 0, 1.738, hs(0, 1.738), '#b86a64', PB.head); // 입술
+  if (glasses) {
+    for (const s of [-1, 1]) add(new THREE.TorusGeometry(0.021, 0.003, 4, 10).translate(s * 0.036, 1.835, hs(0.036, 1.835) + 0.008), '#171717', PB.head);
+    bx(0.02, 0.003, 0.003, 0, 1.838, hs(0, 1.838) + 0.009, '#171717', PB.head);
+    for (const s of [-1, 1]) bx(0.003, 0.003, 0.1, s * 0.083, 1.835, 0.04, '#171717', PB.head);
+  }
+
+  // ---- 치마/코트/배낭
+  if (dress) add(lat([[0.62, 0.285], [0.72, 0.265], [0.84, 0.23], [0.97, 0.185], [1.1, 0.155]], 1, 0.9, 0, 0, SEG + 2, 14), shirt, PB.hips);
+  if (coat) add(lat([[0.68, 0.27], [0.8, 0.245], [0.92, 0.215], [1.03, 0.19], [1.15, 0.168]], 1, 0.9, 0, 0, SEG + 2, 14), shirt, PB.hips);
+  if (pack) {
+    bx(0.3, 0.4, 0.15, 0, 1.4, -0.2, packCol, PB.chest); bx(0.24, 0.16, 0.05, 0, 1.33, -0.29, packCol, PB.chest);
+    for (const s of [-1, 1]) bx(0.032, 0.34, 0.02, s * 0.09, 1.43, 0.12, '#1c1c1c', PB.chest);
+  }
+
+  // ---- 팔다리 (양쪽)
+  const clothY = dress ? 99 : shorts ? 0.56 : 0.075, sleeveY = (longSl || coat) ? 1.0 : 1.4;
+  for (const s of [-1, 1]) {
+    const L = s < 0, lx = s * 0.095, ax = s * 0.225, th = L ? PB.thL : PB.thR, sh = L ? PB.shL : PB.shR, ua = L ? PB.upL : PB.upR, fa = L ? PB.fL : PB.fR;
+    // 다리(고관절 → 발목). 무릎에서 허벅지/정강이 뼈에 가중치를 나눔
+    add(lat([[0.07, 0.046], [0.14, 0.05], [0.26, 0.062], [0.34, 0.07], [0.42, 0.063], [0.47, 0.058], [0.55, 0.076], [0.7, 0.093], [0.84, 0.102], [0.93, 0.1]], 1, 1, lx, 0, SEG, 24),
+      (x, y) => y > clothY ? pants : skin,
+      (x, y) => { if (y > 0.7) { const w = pstep(0.95, 0.84, y); return [[PB.hips, 1 - w], [th, w]]; } const w = pstep(0.54, 0.4, y); return [[th, 1 - w], [sh, w]]; },
+      (x, y, z) => y > clothY ? [lx + (x - lx) * 1.1, y, z * 1.1] : [x, y, z]);
+    // 신발
+    sp(0.05, 0.85, 0.62, 1.55, lx, 0.052, 0.07, shoe, sh); sp(0.046, 0.9, 0.8, 1, lx, 0.06, -0.035, shoe, sh); bx(0.092, 0.018, 0.235, lx, 0.009, 0.03, shoe === '#e9e9e6' ? '#bdbdb8' : '#26262a', sh);
+    // 팔(어깨 → 손목)
+    add(lat([[0.985, 0.028], [1.05, 0.034], [1.15, 0.041], [1.22, 0.045], [1.28, 0.044], [1.35, 0.049], [1.45, 0.052], [1.54, 0.056], [1.595, 0.048]], 1, 1, ax, 0, Math.max(6, SEG - 2), 20),
+      (x, y) => y > sleeveY ? shirt : skin,
+      (x, y) => { if (y > 1.4) { const w = pstep(1.62, 1.52, y); return [[PB.chest, 1 - w], [ua, w]]; } const w = pstep(1.34, 1.22, y); return [[ua, 1 - w], [fa, w]]; },
+      (x, y, z) => y > sleeveY ? [ax + (x - ax) * 1.07, y, z * 1.07] : [x, y, z]);
+    sp(0.05, 1, 1, 1, ax, 1.55, 0, shirt, ua, 8, 6); // 어깨
+    // 손: 손바닥 + 손가락 + 엄지
+    sp(0.04, 0.6, 1.1, 1, ax, 0.935, 0, skin, fa); sp(0.036, 0.55, 1.2, 0.95, ax, 0.872, 0.005, skin, fa); sp(0.014, 1, 2.4, 1, ax - s * 0.021, 0.925, 0.032, skin, fa, 6, 5);
+  }
+
+  const ao = (x, y, z) => { // 구워 넣은 간이 AO: 바닥/사타구니/턱 밑/겨드랑이
+    let a = 1; const ax = Math.abs(x);
+    if (y < 0.3) a *= 0.86 + 0.14 * y / 0.3;
+    if (y > 0.4 && y < 0.9 && ax < 0.06) a *= 0.78 + 0.22 * ax / 0.06;
+    if (y > 1.6 && y < 1.7 && z > 0) a *= 0.82;
+    if (ax > 0.15 && ax < 0.2 && y > 1.36 && y < 1.54) a *= 0.88;
+    return a;
+  };
+  const gs = parts.map(([geo, col, wt, mod]) => {
     geo = geo.index ? geo.toNonIndexed() : geo; geo.deleteAttribute('uv');
-    const c = new THREE.Color(hex), n = geo.attributes.position.count, col = new Float32Array(n * 3), si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
-    for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; si[i * 4] = bn; sw[i * 4] = 1; }
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+    const pa = geo.attributes.position, n = pa.count, ca = new Float32Array(n * 3), si = new Uint16Array(n * 4), sw = new Float32Array(n * 4), cf = typeof col === 'function';
+    for (let i = 0; i < n; i++) {
+      let x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i);
+      if (mod) { const m = mod(x, y, z); x = m[0]; y = m[1]; z = m[2]; pa.setXYZ(i, x, y, z); }
+      const c = pcol(cf ? col(x, y, z) : col), a = ao(x, y, z);
+      ca[i * 3] = c.r * a; ca[i * 3 + 1] = c.g * a; ca[i * 3 + 2] = c.b * a;
+      if (typeof wt === 'number') { si[i * 4] = wt; sw[i * 4] = 1; }
+      else { const w = wt(x, y, z); si[i * 4] = w[0][0]; sw[i * 4] = w[0][1]; si[i * 4 + 1] = w[1][0]; sw[i * 4 + 1] = w[1][1]; }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(ca, 3)); geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
     return geo;
   });
   return mergeGeometries(gs);
 }
 const pickR = a => a[Math.random() * a.length | 0];
 function pedOpts() {
-  const R = Math.random, dress = R() < 0.22;
-  return { shirt: pickR(SHIRT), pants: pickR(PANTS), skin: pickR(SKIN), hair: pickR(HAIR), style: R() * 3 | 0, dress, shorts: !dress && R() < 0.28, longSl: R() < 0.5, pack: R() < 0.22, coat: !dress && R() < 0.18, pcol: pickR(['#2b2d42', '#7a2e3a', '#2f5d50', '#c9a43e', '#3a3a3a']) };
+  const R = Math.random, dress = R() < 0.2, fem = dress || R() < 0.3;
+  return { shirt: pickR(SHIRT), pants: pickR(PANTS), skin: pickR(SKIN), hair: pickR(HAIR), style: fem ? pickR([1, 1, 2, 0]) : pickR([0, 0, 3, 3, 0]), dress, fem, shorts: !dress && R() < 0.28, longSl: R() < 0.5, pack: R() < 0.22, coat: !dress && R() < 0.18, pcol: pickR(['#2b2d42', '#7a2e3a', '#2f5d50', '#c9a43e', '#3a3a3a']), shoe: pickR(['#1d1d22', '#2b2b30', '#e9e9e6', '#6b4a33', '#3a4a6a']), tucked: R() < 0.5, glasses: R() < 0.1 };
 }
 const pedPool = [];
 function makePerson(shirt, pants, skin, hair, gun) {
@@ -845,7 +925,7 @@ function makePerson(shirt, pants, skin, hair, gun) {
   if (gun) geo = pedBuild({ shirt, pants, skin, hair, style: 0, dress: false, shorts: false, longSl: false, pack: false, coat: false });
   else { const i = Math.random() * 30 | 0; geo = pedPool[i] || (pedPool[i] = pedBuild(pedOpts())); }
   const g = new THREE.Group(), mk = (x, y, z) => { const b = new THREE.Bone(); b.position.set(x, y, z); return b; };
-  const bones = [mk(0, 0.95, 0), mk(0, 0.4, 0), mk(0, 0.37, 0), mk(-0.14, -0.13, 0), mk(0, -0.4, 0), mk(0.14, -0.13, 0), mk(0, -0.4, 0), mk(-0.42, 0.27, 0), mk(0, -0.34, 0), mk(0.42, 0.27, 0), mk(0, -0.34, 0)];
+  const bones = [mk(0, 0.95, 0), mk(0, 0.4, 0), mk(0, 0.25, 0), mk(-0.095, -0.06, 0), mk(0, -0.42, 0), mk(0.095, -0.06, 0), mk(0, -0.42, 0), mk(-0.225, 0.22, 0), mk(0, -0.29, 0), mk(0.225, 0.22, 0), mk(0, -0.29, 0)];
   bones[0].add(bones[1], bones[3], bones[5]); bones[1].add(bones[2], bones[7], bones[9]); bones[3].add(bones[4]); bones[5].add(bones[6]); bones[7].add(bones[8]); bones[9].add(bones[10]);
   const mesh = new THREE.SkinnedMesh(geo, pedMat); mesh.castShadow = true; mesh.add(bones[0]); g.add(mesh); g.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones));

@@ -1,0 +1,4 @@
+godot/assets/people/*.fbx filter=lfs diff=lfs merge=lfs -text
+godot/assets/people/*.png filter=lfs diff=lfs merge=lfs -text
+godot/assets/people/src/*.fbx filter=lfs diff=lfs merge=lfs -text
+godot/assets/people/*.res filter=lfs diff=lfs merge=lfs -text
