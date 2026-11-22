@@ -1,0 +1,21 @@
+{
+  "name": "ulsan-city",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node tests/smoke.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@pmndrs/assets": "^1.7.0",
+    "esbuild": "^0.28.2",
+    "n8ao": "^2.1.0",
+    "puppeteer-core": "^25.18.1",
+    "three": "^0.187.0"
+  },
+  "type": "module"
+}

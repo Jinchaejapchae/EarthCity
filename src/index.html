@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Ulsan City</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+/* VOICE: arcade crime caper with sunset swagger
+IDEA: a 90s open-world crime game HUD laid over a dusk harbour city
+PICTURE: the live 3D city itself, full bleed, behind everything
+COLOUR and TYPE: dusk violet-to-peach sky, money green, police red/blue; Black Han Sans for HUD numbers, Noto Sans KR for text
+LAYOUT: full-screen canvas, radar + mission top-left, money/stars/health top-right, thumb controls in bottom corners */
+:root{color-scheme:dark;--g:#7fe08a;--y:#ffd23f;--c:#52e0ff}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;overflow:hidden;background:#1d1838;color:#fff;font:15px/1.45 'Noto Sans KR',system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#game canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(20,8,40,.45))}
+#hurt{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(200,0,0,.6))}
+.hud{position:fixed;pointer-events:none;opacity:0;transition:opacity .6s}
+body.playing .hud{opacity:1}
+.big{font-family:'Black Han Sans',sans-serif;letter-spacing:.5px;-webkit-text-stroke:1.2px #000;paint-order:stroke fill;text-shadow:0 2px 0 #000}
+#tl{top:12px;left:12px;display:flex;flex-direction:column;gap:8px;max-width:min(48vw,320px)}
+#radar{width:132px;height:132px;border-radius:50%;border:3px solid #111;box-shadow:0 0 0 2px rgba(255,255,255,.55),0 6px 18px rgba(0,0,0,.4);background:#1d4c66}
+#mission{background:rgba(10,8,25,.62);border-left:3px solid var(--y);padding:6px 10px;border-radius:4px;font-size:13px}
+#mission b{color:var(--y);margin-right:4px}#mission .warn{color:#ff6b6b;font-weight:900}
+#tr{top:10px;right:12px;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+#qbtn,#wbtn,#tbtn,#lbtn{pointer-events:auto;cursor:pointer;font-size:12px;font-weight:700;padding:3px 9px;border-radius:4px;background:rgba(10,8,25,.62);border:1px solid rgba(255,255,255,.4)}
+#money{font-size:32px;color:var(--g);line-height:1}
+#stars{display:flex;gap:2px}
+#stars i{width:24px;height:24px;display:block;background:rgba(255,255,255,.18);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+#stars i.on{background:#fff;filter:drop-shadow(0 0 2px #000)}
+#stars.blink i.on{animation:bl .5s steps(2) infinite}
+#stars.pop{animation:pop .5s}
+@keyframes bl{50%{background:rgba(255,255,255,.3)}}
+@keyframes pop{30%{transform:scale(1.35)}}
+.bar{width:150px;height:9px;background:rgba(0,0,0,.6);border:2px solid #000;border-radius:2px;overflow:hidden}
+.bar>div{height:100%;background:#ff5a5f;transition:width .2s}
+#carRow{display:flex;align-items:center;gap:8px}
+#carRow .bar>div{background:#5aa9ff}
+#spdW{font-size:26px;line-height:1;color:#fff}#spdW small{font-size:13px;margin-left:2px}
+#toast{top:22%;left:50%;transform:translate(-50%,-8px);background:rgba(10,8,25,.75);padding:8px 16px;border-radius:6px;font-weight:700;opacity:0;transition:.25s;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.good{color:var(--g)}
+#msg{inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,10,30,.35)}
+#msg.show{display:flex;opacity:1}
+#msgT{font-size:clamp(54px,12vw,110px);line-height:1}
+#msg.wasted #msgT{color:#e5383b}#msg.busted #msgT{color:#5aa9ff}
+#msgS{margin-top:8px;font-weight:700;font-size:17px;text-shadow:0 1px 3px #000}
+#help{bottom:12px;left:12px;font-size:12.5px;color:rgba(255,255,255,.85);background:rgba(10,8,25,.5);padding:6px 10px;border-radius:4px}
+#help kbd{font:700 11px 'Noto Sans KR',sans-serif;background:#fff;color:#111;border-radius:3px;padding:1px 5px;margin:0 2px}
+#hintE{bottom:28%;left:50%;transform:translateX(-50%);font-weight:700;background:rgba(10,8,25,.7);padding:6px 12px;border-radius:6px}
+body.touch #help{display:none}
+#joy{position:fixed;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:2px solid rgba(255,255,255,.4);background:rgba(255,255,255,.08);display:none;pointer-events:none}
+#joy.on{display:block}
+#knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.55)}
+#joyHint{left:28px;bottom:34px;width:110px;height:110px;border-radius:50%;border:2px dashed rgba(255,255,255,.3);display:none;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,.6);text-align:center}
+body.touch #joyHint{display:flex}
+#btns{right:16px;bottom:22px;display:none;gap:12px;align-items:flex-end}
+body.touch #btns{display:flex}
+.btn{pointer-events:auto;border:3px solid rgba(0,0,0,.5);border-radius:50%;color:#fff;font:900 15px 'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;touch-action:none;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.btn.on{transform:scale(.92);filter:brightness(1.3)}
+#bFire{width:86px;height:86px;background:rgba(229,56,59,.82)}
+#bHB{width:86px;height:86px;background:rgba(255,159,28,.82);display:none}
+body.driving #bFire{display:none}body.driving #bHB{display:flex}
+#bEnter{width:64px;height:64px;background:rgba(60,60,80,.75);margin-bottom:46px}
+#bEnter.hint{background:rgba(82,224,255,.85);color:#06222b;animation:pop 1s infinite}
+#start{position:fixed;inset:0;display:flex;padding:16px;background:linear-gradient(180deg,rgba(30,20,70,.15),rgba(25,12,40,.75));transition:opacity .5s;overflow:auto}
+#start.gone{opacity:0;pointer-events:none}
+.card{max-width:560px;width:100%;text-align:center;margin:auto}
+.card h1{margin:0;font:400 clamp(56px,13vw,96px)/0.95 'Black Han Sans',sans-serif;background:linear-gradient(180deg,#ffe29a,#ff7aa8 55%,#a86bff);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 0 #1a0d2e)}
+.card .sub{margin:10px 0 22px;font-weight:700;color:#ffd9c2}
+.ctl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;text-align:left;margin-bottom:22px}
+.ctl div{background:rgba(10,8,25,.55);border-radius:8px;padding:10px 12px;font-size:13.5px}
+.ctl b{display:block;color:var(--y);margin-bottom:4px}
+.mapsel{margin:0 0 14px}#mapbtn{font:700 13px 'Noto Sans KR',sans-serif;padding:7px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(10,8,25,.6);color:#fff;cursor:pointer}#mapstat{margin-top:6px;font-size:12px;color:#ffd9c2;min-height:16px}#play{font:900 19px 'Noto Sans KR',sans-serif;padding:14px 44px;min-height:52px;border:0;border-radius:999px;background:#ffd23f;color:#2a1600;cursor:pointer;box-shadow:0 5px 0 #b8860b}
+#play:active{transform:translateY(3px);box-shadow:0 2px 0 #b8860b}
+#play:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.note{margin-top:14px;font-size:12px;color:rgba(255,255,255,.65)}
+@media(max-width:600px){#radar{width:104px;height:104px}#money{font-size:25px}#stars i{width:19px;height:19px}.bar{width:110px}#mission{font-size:12px}.ctl{grid-template-columns:minmax(0,1fr)}}
+@media(max-height:460px){#radar{width:96px;height:96px}.card{max-width:860px}.card h1{font-size:50px}.card h1 br{display:none}.card .sub{margin:4px 0 10px}.ctl{margin-bottom:12px;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ctl div{font-size:12px;padding:8px}#play{padding:10px 40px}.note{display:none}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="vig"></div><div id="hurt"></div>
+<div class="hud" id="tl"><canvas id="radar"></canvas><div id="mission" style="display:none"></div></div>
+<div class="hud" id="tr">
+  <div id="money" class="big">$00000500</div>
+  <div id="stars"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="bar"><div id="hp" style="width:100%"></div></div>
+  <div id="qbtn">화질: 중</div>
+  <div id="wbtn">날씨: 실시간</div>
+  <div id="tbtn">시간: 실시간</div>
+  <div id="lbtn">위치: 울산</div>
+  <div id="carRow" style="display:none"><div id="spdW" class="big"><span id="spd">0</span><small>km/h</small></div><div class="bar"><div id="chp"></div></div></div>
+</div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="hintE" style="display:none"><kbd style="background:#fff;color:#111;border-radius:3px;padding:1px 6px">E</kbd> 탑승</div>
+<div class="hud" id="msg"><div id="msgT" class="big">WASTED</div><div id="msgS"></div></div>
+<div class="hud" id="help"><kbd>WASD</kbd>이동 <kbd>Shift</kbd>전력질주 <kbd>E</kbd>탑승/하차 <kbd>Space</kbd>발사 · 드리프트 · 마우스 드래그로 시점</div>
+<div class="hud" id="joyHint">왼쪽 아무 데나<br>눌러서 이동</div>
+<div id="joy"><div id="knob"></div></div>
+<div class="hud" id="btns"><div class="btn" id="bEnter">탑승</div><div class="btn" id="bFire">발사</div><div class="btn" id="bHB">드리프트</div></div>
+<div id="start"><div class="card">
+  <h1>ULSAN <br>CITY</h1>
+  <div class="sub">해 질 녘 항구 도시 · 오픈월드 프로토타입 v0.1</div>
+  <div class="ctl">
+    <div><b>PC</b>WASD/방향키 이동·운전<br>E 탑승/하차 · Shift 질주<br>Space 발사(도보)/드리프트(운전)<br>마우스 드래그 = 시점 회전</div>
+    <div><b>모바일</b>왼쪽 화면 드래그 = 조이스틱<br>오른쪽 화면 드래그 = 시점<br>버튼: 탑승 · 발사 · 드리프트<br>가로 화면 추천</div>
+    <div><b>할 일</b>파란 표시에서 택배 픽업 → 노란 표시까지 제한시간 안에 배달하고 돈 벌기</div>
+    <div><b>수배</b>사고 치면 별이 올라가고 경찰이 쫓아와요. 시야에서 벗어나면 별이 줄어들어요.</div>
+  </div>
+  <div class="mapsel"><button id="mapbtn">맵: 격자 도시</button><div id="mapstat"></div></div>
+  <button id="play">게임 시작</button>
+  <div class="note">그래픽은 코드로 생성 · 차 모델: Kenney (CC0) · 날씨/시간은 현재 위치 기준 · 소리 있음</div>
+</div></div>
+<script>/*BUNDLE*/</script>
+</body>
+</html>
