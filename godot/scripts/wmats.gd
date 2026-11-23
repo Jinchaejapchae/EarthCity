@@ -20,6 +20,27 @@ var lamp_bulb: StandardMaterial3D
 var lamp_pool: StandardMaterial3D
 var wet_amt := 0.0
 
+const SAT_SHADER := "shader_type spatial;
+global uniform float g_wet;
+global uniform float g_snow;
+uniform sampler2D sat : source_color, filter_linear_mipmap, repeat_disable;
+uniform sampler2D detail : source_color, filter_linear_mipmap, repeat_enable;
+uniform float sat_mix = 0.9;
+varying vec3 wp;
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float n = texture(detail, wp.xz * 0.12).r / 0.82;
+	vec3 s = texture(sat, UV).rgb;
+	vec3 col = mix(COLOR.rgb * n, s * n, sat_mix * COLOR.a);
+	col *= mix(1.0, 0.72, g_wet);
+	ALBEDO = col;
+	ROUGHNESS = mix(1.0, 0.7, g_wet);
+	EMISSION = vec3(0.78, 0.82, 0.88) * 0.5 * g_snow * step(0.05, g_snow);
+}
+"
+var sat_shader: Shader
+static var _globals_added := false
+
 const TREE_SHADER := "shader_type spatial;
 uniform vec4 base : source_color = vec4(1.0);
 uniform float use_vcol = 1.0;
@@ -44,6 +65,12 @@ void fragment() {
 
 func _init() -> void:
 	rng.seed = 21
+	if not _globals_added:
+		_globals_added = true
+		for gname in ["g_wet", "g_snow"]:
+			RenderingServer.global_shader_parameter_add(gname, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
+	sat_shader = Shader.new()
+	sat_shader.code = SAT_SHADER
 	for i in 3:
 		shop_mats.append(_shop(i))
 	var tsh := Shader.new()
@@ -150,8 +177,19 @@ func set_wind(v: float) -> void:
 	tree_leaf.set_shader_parameter("wind", a)
 
 
+## 위성사진을 입힌 지형 재질(타일마다 하나; 날씨는 전역 셰이더 값으로 따라감)
+func sat_material(tex: Texture2D) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = sat_shader
+	m.set_shader_parameter("sat", tex)
+	m.set_shader_parameter("detail", terrain.albedo_texture)
+	return m
+
+
 func set_weather(wet: float, snow: float) -> void:
 	wet_amt = wet
+	RenderingServer.global_shader_parameter_set("g_wet", wet)
+	RenderingServer.global_shader_parameter_set("g_snow", snow)
 	for m in [road_major, road_minor]:
 		m.roughness = lerpf(0.9, 0.28, wet)
 		m.albedo_color = Color(1, 1, 1).lerp(Color(0.62, 0.64, 0.68), wet)

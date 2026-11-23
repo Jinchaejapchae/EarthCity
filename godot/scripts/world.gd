@@ -12,6 +12,7 @@ const DEM_URL := "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/%d/%d/
 
 signal center_ready
 
+const SAT_URL := "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2021_3857/default/g/%d/%d/%d.jpg"
 const StyleScript := preload("res://scripts/style.gd")
 const LandmarkScript := preload("res://scripts/landmarks.gd")
 var lm_cache := {}
@@ -377,17 +378,19 @@ func height_at(p: Vector3) -> float:
 func _load(key: Vector2i, g: int) -> void:
 	loading[key] = true
 	# 벡터 타일과 고도 타일을 동시에 받는다(예전엔 차례로)
-	var res: Array = [PackedByteArray(), PackedByteArray()]
-	var pend := [2]
+	var res: Array = [PackedByteArray(), PackedByteArray(), PackedByteArray()]
+	var pend := [3]
 	var fetcher := func(i: int, url: String):
 		res[i] = await net.fetch(url)
 		pend[0] -= 1
 	fetcher.call(0, tile_tpl.replace("{z}", str(Z)).replace("{x}", str(key.x)).replace("{y}", str(key.y)))
 	fetcher.call(1, DEM_URL % [Z, key.x, key.y])
+	fetcher.call(2, SAT_URL % [Z, key.y, key.x])
 	while pend[0] > 0:
 		await get_tree().process_frame
 	var vec: PackedByteArray = res[0]
 	var dem: PackedByteArray = res[1]
+	var satb: PackedByteArray = res[2]
 	if g != gen:
 		return
 	# 가운데 타일이 먼저 나오도록, 주변 타일의 건물 생성은 가운데가 끝난 뒤에 시작
@@ -410,7 +413,17 @@ func _load(key: Vector2i, g: int) -> void:
 		var lp := geo.ll_to_local(float(e[1]), float(e[2]))
 		if Vector2(lp.x - kc.x, lp.z - kc.z).length() < geo.tile_size(Z) * 0.75:
 			sk.append(Vector3(lp.x - kc.x, lp.z - kc.z, float(LandmarkScript.RADIUS.get(e[3], 50.0))))
-	th.start(func(): return BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la, bm, sk))
+	th.start(func():
+		var simg: Image = null
+		if satb.size() > 0:
+			simg = Image.new()
+			if simg.load_jpg_from_buffer(satb) != OK:
+				simg = null
+			else:
+				simg.convert(Image.FORMAT_RGB8)
+		var od: Dictionary = BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la, bm, sk, simg)
+		od["sat"] = simg
+		return od)
 	while th.is_alive():
 		await get_tree().process_frame
 	var data: Dictionary = th.wait_to_finish()
@@ -534,7 +547,12 @@ func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 	tm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	var tmi := MeshInstance3D.new()
 	tmi.mesh = tm
-	tmi.material_override = mats.terrain
+	var simg = d.get("sat")
+	if simg != null:
+		simg.generate_mipmaps()
+		tmi.material_override = mats.sat_material(ImageTexture.create_from_image(simg))
+	else:
+		tmi.material_override = mats.terrain
 	root.add_child(tmi)
 	# 지형 충돌(높이맵)
 	var n: int = d["n"]

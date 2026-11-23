@@ -50,7 +50,8 @@ func _grp() -> Dictionary:
 	return {"v": PackedVector3Array(), "n": PackedVector3Array(), "u": PackedVector2Array(), "c": PackedColorArray(), "i": PackedInt32Array()}
 
 
-func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float, biome_: int = 0, skip_: Array = []) -> Dictionary:
+func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float, biome_: int = 0, skip_: Array = [], sat_: Image = null) -> Dictionary:
+	sat = sat_
 	region = region_
 	biome = biome_
 	skip = skip_
@@ -273,6 +274,7 @@ func _terrain(out: Dictionary) -> void:
 					c = c.lerp(Color(0.95, 0.96, 0.98), clampf((h - (snow - 250.0)) / 350.0, 0.0, 1.0))
 				if biome == 5 and slope < 0.25:
 					c = c.lerp(Color(0.93, 0.95, 0.97), 0.7)
+			c.a = 0.0 if wmask[v] == 1 else 1.0
 			Cc[v] = c
 			U[v] = Vector2(float(i) / N, float(j) / N)
 	for j in N:
@@ -486,6 +488,7 @@ const SHOP_H := 4.2
 
 var region := 0
 var biome := 0
+var sat: Image = null   # 위성사진(256x256 RGB8) — 지붕 색 표본용
 var skip: Array = []   # 랜드마크 자리(타일 로컬 x, z, 반경): 그 안의 지도 건물은 만들지 않음
 const ST := preload("res://scripts/style.gd")
 var season := 1
@@ -510,11 +513,24 @@ func _tint(hsh: int) -> Color:
 	return Color(minf(l * r, 1.15), minf(l, 1.15), minf(l * b, 1.15), 1.0)
 
 
-func _roof_color(hsh: int, pitched: bool) -> Color:
+## 위성사진에서 (x,z) 위치의 색(타일 로컬 좌표). 사진이 없으면 알파 0
+func _sat_at(x: float, z: float) -> Color:
+	if sat == null:
+		return Color(0, 0, 0, 0)
+	var w := sat.get_width()
+	var px := clampi(int((x / ts + 0.5) * w), 0, w - 1)
+	var pz := clampi(int((z / ts + 0.5) * w), 0, w - 1)
+	return sat.get_pixel(px, pz)
+
+
+func _roof_color(hsh: int, pitched: bool, cen := Vector2.ZERO) -> Color:
 	var v := 0.85 + float(hsh % 25) / 100.0
-	if pitched:
-		return ST.ROOF[region] * v
-	return Color(0.32, 0.32, 0.33) * v
+	var base: Color = ST.ROOF[region] if pitched else Color(0.32, 0.32, 0.33)
+	var sc := _sat_at(cen.x, cen.y)
+	if sc.a > 0.0:
+		# 위성 색(주변 포함)을 선형 밝기로 바꿔 지붕 색에 절반 섞는다
+		base = base.lerp(Color(sc.r, sc.g, sc.b).srgb_to_linear() * 1.3, 0.5)
+	return base * v
 
 
 func _buildings(layers: Dictionary, out: Dictionary, tx: int, ty: int) -> void:
@@ -648,7 +664,7 @@ func _extrude(o: PackedVector2Array, area: float, gmin: float, bot: float, top: 
 	if house and Geometry2D.is_point_in_polygon(cen, o):
 		var ridge := clampf(0.2 * sqrt(absf(area)), 1.6, 4.2)
 		var apex := Vector3(cen.x, top + ridge, cen.y)
-		var rc := _roof_color(hsh, true)
+		var rc := _roof_color(hsh, true, cen)
 		for i in n:
 			var a2 := o[i]
 			var b2 := o[(i + 1) % n]
@@ -672,7 +688,7 @@ func _extrude(o: PackedVector2Array, area: float, gmin: float, bot: float, top: 
 			faces.append(apex)
 		return
 	var tri := Geometry2D.triangulate_polygon(o)
-	var flat := _roof_color(hsh, false)
+	var flat := _roof_color(hsh, false, cen)
 	if tri.size() >= 3:
 		var rb2: int = roof.v.size()
 		for q in o:

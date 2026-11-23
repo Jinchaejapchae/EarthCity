@@ -63,6 +63,13 @@ func build(main_: Node, settings_: RefCounted) -> void:
 	help.add_theme_font_size_override("font_size", 13)
 	help.modulate = Color(1, 1, 1, 0.75)
 	vb.add_child(help)
+	var credit := Label.new()
+	credit.text = "지도 © OpenStreetMap 기여자 (OpenFreeMap) · 고도 Terrarium · 위성 Sentinel-2 cloudless © EOX IT Services (CC BY-NC-SA 4.0, 비상업)"
+	credit.add_theme_font_size_override("font_size", 11)
+	credit.modulate = Color(1, 1, 1, 0.55)
+	credit.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credit.custom_minimum_size = Vector2(440, 0)
+	vb.add_child(credit)
 	_button(vb, "게임 종료", func(): main.get_tree().quit())
 
 
