@@ -25,12 +25,15 @@ global uniform float g_wet;
 global uniform float g_snow;
 uniform sampler2D sat : source_color, filter_linear_mipmap, repeat_disable;
 uniform sampler2D detail : source_color, filter_linear_mipmap, repeat_enable;
-uniform float sat_mix = 0.9;
+uniform float sat_mix = 1.0;
 varying vec3 wp;
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	float n = texture(detail, wp.xz * 0.12).r / 0.82;
 	vec3 s = texture(sat, UV).rgb;
+	float l = dot(s, vec3(0.333));
+	s = clamp(mix(vec3(l), s, 1.25), 0.0, 1.0);
+	s = clamp((s - 0.4) * 1.25 + 0.42, 0.0, 1.0);
 	vec3 col = mix(COLOR.rgb * n, s * n, sat_mix * COLOR.a);
 	col *= mix(1.0, 0.72, g_wet);
 	ALBEDO = col;

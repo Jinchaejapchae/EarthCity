@@ -489,7 +489,7 @@ func _strip(pts: PackedVector2Array, width: float, lift: float, bridge: bool, g:
 		var a := pts[i - 1]
 		var b := pts[i]
 		var L := a.distance_to(b)
-		var steps := maxi(1, int(ceil(L / 6.0)))
+		var steps := maxi(1, int(ceil(L / minf(6.0, ts / float(N) * 0.4))))
 		for s in range(1, steps + 1):
 			P.append(a.lerp(b, float(s) / steps))
 			acc += L / steps
@@ -520,6 +520,11 @@ func _strip(pts: PackedVector2Array, width: float, lift: float, bridge: bool, g:
 			yl = hgt(P[i].x + nrm.x, P[i].y + nrm.y) + lift
 			yr = hgt(P[i].x - nrm.x, P[i].y - nrm.y) + lift
 			yc = maxf(yc, (yl + yr) * 0.5)   # 가운데는 양끝 평균보다 낮아지지 않게
+			# 지형 격자 꺾임(능선)에서 땅이 도로 위로 솟지 않게 앞뒤 반 칸의 최고 높이도 반영
+			var hh := maxf(hgt(P[i].x + dir.x * 2.5, P[i].y + dir.y * 2.5), hgt(P[i].x - dir.x * 2.5, P[i].y - dir.y * 2.5)) + lift
+			yc = maxf(yc, hh)
+			yl = maxf(yl, yc - 0.15)
+			yr = maxf(yr, yc - 0.15)
 		var row: int = g.v.size()
 		g.v.append(Vector3(P[i].x + nrm.x, yl, P[i].y + nrm.y))
 		g.v.append(Vector3(P[i].x, yc, P[i].y))
