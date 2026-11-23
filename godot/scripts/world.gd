@@ -381,7 +381,7 @@ func _load(key: Vector2i, g: int) -> void:
 	var res: Array = [PackedByteArray(), PackedByteArray(), PackedByteArray()]
 	var pend := [3]
 	var fetcher := func(i: int, url: String):
-		res[i] = await net.fetch(url)
+		res[i] = await net.fetch(url, true, i == 2)   # 위성사진(2)은 없어도 되므로 짧게 한 번만
 		pend[0] -= 1
 	fetcher.call(0, tile_tpl.replace("{z}", str(Z)).replace("{x}", str(key.x)).replace("{y}", str(key.y)))
 	fetcher.call(1, DEM_URL % [Z, key.x, key.y])

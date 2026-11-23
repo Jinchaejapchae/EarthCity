@@ -37,6 +37,8 @@ var place_name := ""
 var search: LineEdit
 var hour := 15.5
 var frames := 0
+var hop := ""        # 테스트용: 첫 로딩이 끝나면 이 위치(lat,lon)로 다시 이동
+var hopped := false
 var shot_path := ""
 var shot_cam := ""
 var shot_frame := 150
@@ -63,6 +65,8 @@ func _ready() -> void:
 			shot_path = a.substr(7)
 		elif a.begins_with("--cam="):
 			shot_cam = a.substr(6)
+		elif a.begins_with("--hop="):
+			hop = a.substr(6)
 		elif a.begins_with("--frame="):
 			shot_frame = a.substr(8).to_int()
 		elif a.begins_with("--walk"):
@@ -121,7 +125,11 @@ func _ready() -> void:
 	_go(lat, lon)
 
 
+var load_start := 0
+
+
 func _go(la: float, lo: float) -> void:
+	load_start = Time.get_ticks_msec()
 	loading = true
 	lat = la
 	lon = lo
@@ -146,6 +154,12 @@ func _go(la: float, lo: float) -> void:
 
 
 func _on_center_ready() -> void:
+	print("CENTER_READY lat=", lat, " lon=", lon, " t=", Time.get_ticks_msec())
+	if hop != "" and not hopped:
+		hopped = true
+		var hp := hop.split(",")
+		_go(float(hp[0]), float(hp[1]))
+		return
 	# 가장 가까운 도로 옆에 서고, 그 도로 위에 내 차를 세운다(도로가 없으면 원점)
 	var ppos := Vector3(0, world.height_at(Vector3.ZERO) + 1.0, 0)
 	var cpos := Vector3(5.0, 0.0, 3.0)

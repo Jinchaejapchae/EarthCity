@@ -10,16 +10,16 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute("user://cache")
 
 
-func fetch(url: String, use_cache := true) -> PackedByteArray:
+func fetch(url: String, use_cache := true, optional := false) -> PackedByteArray:
 	var cp := "user://cache/" + url.md5_text()
 	if use_cache and FileAccess.file_exists(cp):
 		return FileAccess.get_file_as_bytes(cp)
-	for attempt in 3:
+	for attempt in (1 if optional else 3):
 		while active >= MAX_ACTIVE:
 			await get_tree().process_frame
 		active += 1
 		var req := HTTPRequest.new()
-		req.timeout = 30.0
+		req.timeout = 8.0 if optional else 30.0
 		add_child(req)
 		var err := req.request(url, PackedStringArray(["User-Agent: " + UA]))
 		if err != OK:
