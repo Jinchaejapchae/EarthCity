@@ -37,6 +37,7 @@ var result_box: HBoxContainer
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	focus_mode = Control.FOCUS_CLICK
 	clip_contents = true
 
 
@@ -58,7 +59,7 @@ func _ready() -> void:
 	_btn(row, "여기로 이동", _go)
 	_btn(row, "닫기 (M)", func(): visible = false)
 	info = Label.new()
-	info.text = "지도를 드래그하고 휠로 확대한 뒤 클릭해서 위치를 고르세요. 더블클릭하면 바로 이동합니다."
+	info.text = "지도를 드래그하고 휠/두 손가락 스크롤/핀치(또는 +/- 키)로 확대한 뒤 클릭해서 위치를 고르세요. 더블클릭하면 바로 이동합니다."
 	row.add_child(info)
 	var flow := HFlowContainer.new()
 	vb.add_child(flow)
@@ -217,19 +218,32 @@ func _request(key: String) -> void:
 
 
 # ---------------------------------------------------------------- 입력
+var gesture_acc := 0.0
+
+
+## 마우스(m) 아래 지점을 고정한 채 한 단계 확대(+1)/축소(-1)
+func _zoom_at(dz: int, m: Vector2) -> void:
+	var nz := clampi(zoom + dz, 2, 17)
+	if nz == zoom:
+		return
+	var under := px_to_ll(ll_to_px(clat, clon) + m - size / 2.0)
+	zoom = nz
+	var c2 := px_to_ll(ll_to_px(under.x, under.y) - (m - size / 2.0))
+	clat = c2.x
+	clon = c2.y
+	queue_redraw()
+
+
 func _gui_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and (e.keycode == KEY_EQUAL or e.keycode == KEY_PLUS or e.keycode == KEY_KP_ADD):
+		_zoom_at(1, size / 2.0)
+		return
+	if e is InputEventKey and e.pressed and (e.keycode == KEY_MINUS or e.keycode == KEY_KP_SUBTRACT):
+		_zoom_at(-1, size / 2.0)
+		return
 	if e is InputEventMouseButton:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			var dz := 1 if e.button_index == MOUSE_BUTTON_WHEEL_UP else -1
-			var nz := clampi(zoom + dz, 2, 17)
-			if nz != zoom:
-				var m: Vector2 = e.position
-				var under := px_to_ll(ll_to_px(clat, clon) + m - size / 2.0)
-				zoom = nz
-				var c2 := px_to_ll(ll_to_px(under.x, under.y) - (m - size / 2.0))
-				clat = c2.x
-				clon = c2.y
-				queue_redraw()
+			_zoom_at(1 if e.button_index == MOUSE_BUTTON_WHEEL_UP else -1, e.position)
 		elif e.button_index == MOUSE_BUTTON_LEFT:
 			if e.pressed:
 				dragging = true
@@ -250,6 +264,23 @@ func _gui_input(e: InputEvent) -> void:
 					sel_name = "%.3f, %.3f" % [ll.x, ll.y]
 					queue_redraw()
 				dragging = false
+	# 맥 매직마우스/트랙패드: 두 손가락 스크롤(PanGesture)과 핀치(MagnifyGesture)
+	elif e is InputEventMagnifyGesture:
+		gesture_acc += log(e.factor) / log(1.35)
+		while gesture_acc >= 1.0:
+			_zoom_at(1, e.position)
+			gesture_acc -= 1.0
+		while gesture_acc <= -1.0:
+			_zoom_at(-1, e.position)
+			gesture_acc += 1.0
+	elif e is InputEventPanGesture:
+		gesture_acc += -e.delta.y * 0.6
+		while gesture_acc >= 1.0:
+			_zoom_at(1, get_local_mouse_position())
+			gesture_acc -= 1.0
+		while gesture_acc <= -1.0:
+			_zoom_at(-1, get_local_mouse_position())
+			gesture_acc += 1.0
 	elif e is InputEventMouseMotion and dragging:
 		drag_dist += e.relative.length()
 		var c2 := px_to_ll(ll_to_px(clat, clon) - e.relative)
