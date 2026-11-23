@@ -13,6 +13,8 @@ const DEM_URL := "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/%d/%d/
 signal center_ready
 
 const StyleScript := preload("res://scripts/style.gd")
+const LandmarkScript := preload("res://scripts/landmarks.gd")
+var lm_cache := {}
 var geo := GeoScript.new()
 var mats := MatScript.new()
 var show_trees := true
@@ -152,12 +154,99 @@ func teleport(lat: float, lon: float) -> void:
 	season = _season_of(lat)
 	biome = StyleScript.biome_of(lat, lon)
 	mats.set_style(biome)
+	_apply_signs(lat, lon, region, gen)
 	if tile_tpl == "":
 		var tj: PackedByteArray = await net.fetch(TILEJSON, false)
 		var j = JSON.parse_string(tj.get_string_from_utf8())
 		if j is Dictionary and j.has("tiles"):
 			tile_tpl = str(j["tiles"][0])
 	update(Vector3.ZERO)
+
+
+## 이 타일 안에 있는 유명 건축물을 세운다
+func _add_landmarks(key: Vector2i, root: Node3D, c: Vector3) -> void:
+	for e in LandmarkScript.LIST:
+		var p := geo.ll_to_local(float(e[1]), float(e[2]))
+		if geo.tile_of_local(p, Z) != key:
+			continue
+		var kind: String = e[3]
+		if not lm_cache.has(kind):
+			lm_cache[kind] = LandmarkScript.new().build(kind, 1.0)
+		var r: Dictionary = lm_cache[kind]
+		var n3 := Node3D.new()
+		var hh := terrain_height_in(root, p, c)
+		n3.position = Vector3(p.x - c.x, hh, p.z - c.z)
+		n3.rotation.y = -deg_to_rad(float(e[4]))
+		n3.scale = Vector3.ONE * float(e[5])
+		var mi := MeshInstance3D.new()
+		mi.mesh = r.mesh
+		n3.add_child(mi)
+		var sz: Vector3 = r.solid
+		if sz != Vector3.ZERO:
+			var sb := StaticBody3D.new()
+			sb.collision_layer = 1
+			var cs := CollisionShape3D.new()
+			var bx := BoxShape3D.new()
+			bx.size = sz
+			cs.shape = bx
+			cs.position = Vector3(0, sz.y * 0.5, 0)
+			sb.add_child(cs)
+			n3.add_child(sb)
+		root.add_child(n3)
+
+
+## 청크 노드가 아직 chunks 에 없을 때를 위한 지형 높이(타일 높이맵을 직접 보간)
+func terrain_height_in(root: Node3D, p: Vector3, c: Vector3) -> float:
+	return _pending_h(p, c)
+
+
+var _pending_hmap := PackedFloat32Array()
+var _pending_n := 128
+var _pending_ts := 1.0
+
+
+func _pending_h(p: Vector3, c: Vector3) -> float:
+	var n := _pending_n
+	var W2 := n + 1
+	var fi := clampf(((p.x - c.x) / _pending_ts + 0.5) * n, 0.0, float(n) - 0.0001)
+	var fj := clampf(((p.z - c.z) / _pending_ts + 0.5) * n, 0.0, float(n) - 0.0001)
+	var i := int(fi)
+	var j := int(fj)
+	var fx := fi - i
+	var fz := fj - j
+	var a := lerpf(_pending_hmap[j * W2 + i], _pending_hmap[j * W2 + i + 1], fx)
+	var b := lerpf(_pending_hmap[(j + 1) * W2 + i], _pending_hmap[(j + 1) * W2 + i + 1], fx)
+	return lerpf(a, b, fz)
+
+
+## 상가 간판 글자를 지역 언어로 바꿈(SubViewport 에 Label 을 한 번 그려서 이미지로 가져옴)
+func _apply_signs(la: float, lo: float, rg: int, g: int) -> void:
+	var words: Array = StyleScript.sign_words(la, lo, rg)
+	var vp := SubViewport.new()
+	vp.size = Vector2i(256, 128)
+	vp.transparent_bg = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var lab := Label.new()
+	lab.position = Vector2(8, 5)
+	lab.size = Vector2(240, 30)
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lab.add_theme_font_size_override("font_size", 22)
+	lab.add_theme_color_override("font_color", Color.WHITE)
+	lab.clip_text = true
+	vp.add_child(lab)
+	add_child(vp)
+	for i in 3:
+		if g != gen:
+			break
+		lab.text = str(words[(i * 2 + int(abs(la * 10.0))) % words.size()])
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		var img := vp.get_texture().get_image()
+		if img != null:
+			mats.apply_sign(i, img, Color(0.1, 0.1, 0.1) if i == 2 else Color.WHITE)
+	vp.queue_free()
 
 
 func update(p: Vector3) -> void:
@@ -315,7 +404,13 @@ func _load(key: Vector2i, g: int) -> void:
 	var sn := season
 	var la := geo.lat0
 	var bm := biome
-	th.start(func(): return BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la, bm))
+	var sk: Array = []
+	var kc := geo.tile_center(Z, key.x, key.y)
+	for e in LandmarkScript.LIST:
+		var lp := geo.ll_to_local(float(e[1]), float(e[2]))
+		if Vector2(lp.x - kc.x, lp.z - kc.z).length() < geo.tile_size(Z) * 0.75:
+			sk.append(Vector3(lp.x - kc.x, lp.z - kc.z, float(LandmarkScript.RADIUS.get(e[3], 50.0))))
+	th.start(func(): return BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la, bm, sk))
 	while th.is_alive():
 		await get_tree().process_frame
 	var data: Dictionary = th.wait_to_finish()
@@ -514,6 +609,10 @@ func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 		bb.add_child(bcs)
 		root.add_child(bb)
 	loading.erase(key)
+	_pending_hmap = d["H"]
+	_pending_n = n
+	_pending_ts = ts
+	_add_landmarks(key, root, c)
 	net_roads.add_chunk(key, d["net"], c)
 	chunks[key] = {"bp": d["bpolys"], "node": root, "h": d["H"], "n": n, "ts": ts, "cx": c.x, "cz": c.z, "tp": d["tree_p"], "ts_": d["tree_s"]}
 	if not center_done and chunks.has(geo.tile_of_local(Vector3.ZERO, Z)):

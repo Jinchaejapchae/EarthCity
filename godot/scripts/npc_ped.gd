@@ -39,6 +39,9 @@ func setup(net_: RefCounted, world_: Node3D, traffic_: Node, from_id: int, to_id
 	var model: Node3D = (load(CHAR) as PackedScene).instantiate()
 	model.rotation.y = PI
 	add_child(model)
+	var rg := RandomNumberGenerator.new()
+	rg.randomize()
+	look = preload("res://scripts/style.gd").ped_look(world.region, rg)
 	_fix(model)
 	model.scale = Vector3.ONE * randf_range(0.94, 1.06)
 	anim = model.find_children("*", "AnimationPlayer", true, false)[0] as AnimationPlayer
@@ -97,6 +100,32 @@ func _can_cross() -> bool:
 	return sg.phase_state(cross_ci, cross_phase) == 2 and sg.time_to_green(cross_ci, cross_phase) > cross_dur + 1.5
 
 
+const PED_SHADER := "shader_type spatial;
+uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform vec3 top_col : source_color;
+uniform vec3 bot_col : source_color;
+uniform vec3 skin_mul = vec3(1.0);
+uniform float y0 = 0.0;
+uniform float hgt = 1.0;
+varying float ny;
+void vertex() { ny = (VERTEX.y - y0) / hgt; }
+void fragment() {
+	vec4 t = texture(tex, UV);
+	float luma = dot(t.rgb, vec3(0.299, 0.587, 0.114));
+	float dark = 1.0 - smoothstep(0.012, 0.05, luma);
+	float neutral = step(t.r, t.b + 0.004);
+	float cloth = dark * neutral * step(ny, 0.84);
+	vec3 cc = ny < 0.5 ? bot_col : top_col;
+	vec3 col = mix(t.rgb, cc * (0.3 + luma * 12.0), cloth);
+	float skin = step(t.b + 0.008, t.r) * step(0.04, luma);
+	col = mix(col, t.rgb * skin_mul, skin);
+	ALBEDO = col;
+	ROUGHNESS = 0.72;
+}
+"
+var look := {}
+
+
 func _fix(root: Node) -> void:
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
@@ -107,6 +136,18 @@ func _fix(root: Node) -> void:
 			var mat := m.mesh.surface_get_material(i) as BaseMaterial3D
 			if mat == null:
 				continue
+			if mat.resource_name == "Ch06_body" and look.size() > 0:
+				var sm := ShaderMaterial.new()
+				sm.shader = _ped_shader()
+				sm.set_shader_parameter("tex", mat.albedo_texture)
+				sm.set_shader_parameter("top_col", look.top)
+				sm.set_shader_parameter("bot_col", look.bottom)
+				sm.set_shader_parameter("skin_mul", Vector3(look.skin.r, look.skin.g, look.skin.b))
+				var ab := m.mesh.get_aabb()
+				sm.set_shader_parameter("y0", ab.position.y)
+				sm.set_shader_parameter("hgt", ab.size.y)
+				m.set_surface_override_material(i, sm)
+				continue
 			mat = mat.duplicate()
 			mat.albedo_color = Color(1, 1, 1, 1)
 			mat.roughness = 0.72
@@ -116,6 +157,16 @@ func _fix(root: Node) -> void:
 			else:
 				mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 			m.set_surface_override_material(i, mat)
+
+
+static var _shader: Shader
+
+
+func _ped_shader() -> Shader:
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = PED_SHADER
+	return _shader
 
 
 func _edge_changed() -> void:

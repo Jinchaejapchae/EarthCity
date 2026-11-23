@@ -33,6 +33,11 @@ func local_to_ll(p: Vector3) -> Vector2:
 	return merc_to_ll(Vector2(p.x / k + ox, -p.z / k + oy))
 
 
+func ll_to_local(lat: float, lon: float) -> Vector3:
+	var m := ll_to_merc(lat, lon)
+	return Vector3((m.x - ox) * k, 0.0, -(m.y - oy) * k)
+
+
 func tile_of_local(p: Vector3, z: int) -> Vector2i:
 	var mx := p.x / k + ox
 	var my := -p.z / k + oy

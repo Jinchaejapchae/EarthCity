@@ -50,9 +50,10 @@ func _grp() -> Dictionary:
 	return {"v": PackedVector3Array(), "n": PackedVector3Array(), "u": PackedVector2Array(), "c": PackedColorArray(), "i": PackedInt32Array()}
 
 
-func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float, biome_: int = 0) -> Dictionary:
+func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float, biome_: int = 0, skip_: Array = []) -> Dictionary:
 	region = region_
 	biome = biome_
+	skip = skip_
 	season = season_
 	lat = lat_
 	rng.seed = tx * 7919 + ty * 104729 + 13
@@ -485,6 +486,7 @@ const SHOP_H := 4.2
 
 var region := 0
 var biome := 0
+var skip: Array = []   # 랜드마크 자리(타일 로컬 x, z, 반경): 그 안의 지도 건물은 만들지 않음
 const ST := preload("res://scripts/style.gd")
 var season := 1
 var lat := 0.0
@@ -544,6 +546,13 @@ func _buildings(layers: Dictionary, out: Dictionary, tx: int, ty: int) -> void:
 				for q in o:
 					c += q
 				c /= o.size()
+				var skipped := false
+				for sk in skip:
+					if (c - Vector2(sk.x, sk.y)).length() < sk.z:
+						skipped = true
+						break
+				if skipped:
+					continue
 				var hsh := absi(hash(Vector2i(int(c.x * 7.0), int(c.y * 7.0))))
 				var h := rh
 				if h <= 0.0:
@@ -618,7 +627,13 @@ func _extrude(o: PackedVector2Array, area: float, gmin: float, bot: float, top: 
 		var nwin := maxi(1, int(round(L / 3.0)))
 		_wall_quad(g, a, b, yb, top, run_u / 4.0, (run_u + nwin) / 4.0, v_bot, 0.0, nrm, tint)
 		if has_shop:
-			_wall_quad(sg, a, b, bot, shop_top, run_s / 5.0, (run_s + L) / 5.0, (shop_top - bot) / SHOP_H, 0.0, nrm, Color(1, 1, 1, 1))
+			# 바깥에서 봤을 때 글자가 뒤집히지 않도록(감는 방향이 시계 반대면 u 를 반대로)
+			var su0 := run_s / 5.0
+			var su1 := (run_s + L) / 5.0
+			if sgn > 0.0:
+				su0 = (run_s + L) / 5.0
+				su1 = run_s / 5.0
+			_wall_quad(sg, a, b, bot, shop_top, su0, su1, (shop_top - bot) / SHOP_H, 0.0, nrm, Color(1, 1, 1, 1))
 		run_u += nwin
 		run_s += L
 		var p0 := Vector3(a.x, bot, a.y)

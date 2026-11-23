@@ -4,6 +4,8 @@ extends RefCounted
 var rng := RandomNumberGenerator.new()
 var region_mats := {}      # 지역 번호 -> 파사드 재질 6개(필요할 때 만듦)
 var shop_mats: Array = []   # 1층 상가 띠 3종
+var shop_base: Array = []   # 간판 글자를 얹기 전 원본 이미지
+var shop_em_base: Array = []
 var all_mats: Array = []    # 밤 창문 발광을 켜고 끄기 위한 목록
 var tree_trunk: ShaderMaterial
 var tree_leaf: ShaderMaterial
@@ -121,6 +123,23 @@ func set_night(f: float) -> void:
 
 
 ## 비에 젖은 노면(어둡고 반들반들) / 눈 덮임(밝은 발광으로 흉내)
+## 간판 띠에 글자 이미지(알파)를 얹어 상가 재질 i 의 텍스처를 교체
+func apply_sign(i: int, txt: Image, col: Color) -> void:
+	var img: Image = shop_base[i].duplicate()
+	var em: Image = shop_em_base[i].duplicate()
+	for y in range(6, 34):
+		for x in range(8, 248):
+			var a := txt.get_pixel(x, y).a
+			if a > 0.02:
+				img.set_pixel(x, y, img.get_pixel(x, y).lerp(col, a))
+				em.set_pixel(x, y, em.get_pixel(x, y).lerp(col * 0.9, a))
+	img.generate_mipmaps()
+	em.generate_mipmaps()
+	var m: StandardMaterial3D = shop_mats[i]
+	m.albedo_texture = ImageTexture.create_from_image(img)
+	m.emission_texture = ImageTexture.create_from_image(em)
+
+
 func set_style(biome: int) -> void:
 	water.albedo_color = preload("res://scripts/style.gd").WATER[biome]
 
@@ -200,6 +219,8 @@ func _shop(i: int) -> StandardMaterial3D:
 	for y in range(40, 128):
 		for x in [10, 11, 76, 77, 142, 143, 208, 209, 244, 245]:
 			img.set_pixel(x, y, wall.darkened(0.3))
+	shop_base.append(img.duplicate())
+	shop_em_base.append(em.duplicate())
 	img.generate_mipmaps()
 	em.generate_mipmaps()
 	var m := StandardMaterial3D.new()

@@ -127,3 +127,84 @@ static func car_tint(region: int, rng: RandomNumberGenerator) -> Color:
 		var c: Color = arr[rng.randi() % arr.size()]
 		return c
 	return Color.from_hsv(rng.randf(), rng.randf_range(0.25, 0.7), rng.randf_range(0.7, 1.0)).lerp(Color.WHITE, 0.25)
+
+
+const TOPS := {
+	0: [Color(0.1, 0.1, 0.12), Color(0.35, 0.35, 0.4), Color(0.85, 0.85, 0.85), Color(0.2, 0.3, 0.55), Color(0.6, 0.2, 0.2), Color(0.25, 0.4, 0.3), Color(0.75, 0.68, 0.5)],
+	1: [Color(0.1, 0.1, 0.12), Color(0.4, 0.4, 0.42), Color(0.9, 0.9, 0.9), Color(0.15, 0.2, 0.35), Color(0.7, 0.62, 0.5), Color(0.8, 0.45, 0.5)],
+	2: [Color(0.1, 0.1, 0.12), Color(0.3, 0.3, 0.33), Color(0.55, 0.45, 0.35), Color(0.18, 0.25, 0.4), Color(0.6, 0.15, 0.15), Color(0.8, 0.8, 0.8)],
+	4: [Color(0.1, 0.1, 0.12), Color(0.5, 0.5, 0.52), Color(0.9, 0.9, 0.9), Color(0.2, 0.3, 0.6), Color(0.7, 0.15, 0.15), Color(0.3, 0.5, 0.3), Color(0.85, 0.7, 0.2)],
+	6: [Color(0.9, 0.55, 0.1), Color(0.1, 0.5, 0.55), Color(0.85, 0.3, 0.5), Color(0.2, 0.3, 0.7), Color(0.9, 0.9, 0.85), Color(0.7, 0.15, 0.2)],
+	7: [Color(0.9, 0.9, 0.85), Color(0.2, 0.6, 0.7), Color(0.9, 0.5, 0.3), Color(0.3, 0.6, 0.35), Color(0.9, 0.8, 0.3)],
+	8: [Color(0.9, 0.9, 0.9), Color(0.8, 0.2, 0.2), Color(0.2, 0.4, 0.8), Color(0.9, 0.75, 0.2), Color(0.1, 0.1, 0.12), Color(0.3, 0.6, 0.35)],
+	9: [Color(0.9, 0.6, 0.1), Color(0.8, 0.2, 0.25), Color(0.2, 0.55, 0.3), Color(0.25, 0.35, 0.75), Color(0.95, 0.85, 0.2)],
+	12: [Color(0.95, 0.95, 0.92), Color(0.95, 0.95, 0.92), Color(0.95, 0.95, 0.92), Color(0.15, 0.15, 0.17), Color(0.7, 0.62, 0.5)],
+}
+const BOTTOMS := [Color(0.1, 0.1, 0.12), Color(0.15, 0.2, 0.35), Color(0.3, 0.3, 0.33), Color(0.55, 0.5, 0.4), Color(0.2, 0.2, 0.22)]
+# 피부색 배수(원본 중간 톤 기준): 밝음 / 중간 / 어두움
+const SKIN_LIGHT := Color(1.45, 1.3, 1.2)
+const SKIN_MID := Color(1.0, 1.0, 1.0)
+const SKIN_DARK := Color(0.5, 0.45, 0.42)
+const SKIN_ODDS := {
+	0: [0.5, 0.35, 0.15], 1: [0.75, 0.25, 0.0], 2: [0.8, 0.15, 0.05], 3: [0.4, 0.5, 0.1], 4: [0.5, 0.25, 0.25],
+	5: [0.9, 0.1, 0.0], 6: [0.05, 0.6, 0.35], 7: [0.25, 0.7, 0.05], 8: [0.35, 0.45, 0.2], 9: [0.0, 0.15, 0.85],
+	10: [0.7, 0.2, 0.1], 11: [0.85, 0.15, 0.0], 12: [0.25, 0.65, 0.1],
+}
+
+
+## 보행자 한 명의 옷/피부: {top, bottom, skin}
+static func ped_look(region: int, rng: RandomNumberGenerator) -> Dictionary:
+	var tops: Array = TOPS.get(region, TOPS[0])
+	var top: Color = tops[rng.randi() % tops.size()]
+	var bottom: Color = BOTTOMS[rng.randi() % BOTTOMS.size()]
+	if region == 12 and top.v > 0.9:
+		bottom = top # 흰 긴 옷
+	var odds: Array = SKIN_ODDS.get(region, SKIN_ODDS[0])
+	var r := rng.randf()
+	var skin := SKIN_LIGHT if r < float(odds[0]) else (SKIN_MID if r < float(odds[0]) + float(odds[1]) else SKIN_DARK)
+	return {"top": top, "bottom": bottom, "skin": skin}
+
+
+## 1층 상가 간판에 쓸 글자(그 지역 언어)
+static func sign_words(la: float, lo: float, region: int) -> Array:
+	match region:
+		1:
+			if lo >= 124.0 and lo <= 132.0 and la >= 33.0 and la <= 39.0:
+				return ["편의점", "약국", "치킨", "카페", "김밥", "호프", "부동산"]
+			if lo >= 129.0 and la <= 46.0 and la >= 30.0 and lo <= 146.0:
+				return ["ラーメン", "薬局", "居酒屋", "コンビニ", "カフェ", "寿司"]
+			return ["超市", "餐厅", "药店", "便利店", "茶楼", "银行"]
+		2:
+			if la > 42.0 and la < 51.5 and lo > -5.0 and lo < 8.0:
+				return ["BOULANGERIE", "CAFÉ", "PHARMACIE", "TABAC", "BRASSERIE", "FLEURISTE"]
+			if la >= 47.0 and lo >= 6.0:
+				return ["BÄCKEREI", "APOTHEKE", "CAFÉ", "GASTHAUS", "METZGEREI"]
+			if la < 44.0:
+				return ["FARMACIA", "PIZZERIA", "CAFFÈ", "TRATTORIA", "PANADERÍA", "TABACCHI"]
+			return ["CAFE", "PHARMACY", "BAKERY", "PUB", "SHOP"]
+		3:
+			if lo > 25.0 and la > 35.0:
+				return ["ECZANE", "KAHVE", "MARKET", "LOKANTA", "FIRIN"]
+			return ["صيدلية", "مقهى", "سوبرماركت", "مطعم", "مخبز", "PHARMACIE"]
+		4: return ["PHARMACY", "DINER", "PIZZA", "DELI", "COFFEE", "BANK", "LIQUOR"]
+		5: return ["KIOSK", "KAFFE", "APOTEK", "BAGERI", "PIZZA", "BUTIKK"]
+		6: return ["दुकान", "मिठाई", "फार्मेसी", "होटल", "चाय", "KIRANA"]
+		7:
+			if lo < 106.0 and la > 5.0:
+				return ["ร้านอาหาร", "ร้านกาแฟ", "ร้านขายยา", "7-ELEVEN", "ตลาด"]
+			if lat_is_viet(la, lo):
+				return ["QUÁN ĂN", "CÀ PHÊ", "NHÀ THUỐC", "TẠP HÓA", "PHỞ"]
+			return ["WARUNG", "TOKO", "APOTEK", "KEDAI KOPI", "MINIMARKET"]
+		8:
+			if lo > -75.0 and lo < -34.0 and la < 5.0 and la > -34.0:
+				return ["PADARIA", "FARMÁCIA", "LANCHES", "MERCADO", "AÇAÍ"]
+			return ["TIENDA", "FARMACIA", "PANADERÍA", "CAFÉ", "ABARROTES", "TACOS"]
+		9: return ["SHOP", "DUKA", "PHARMACY", "SALON", "MOBILE MONEY", "BUTCHERY"]
+		10: return ["CAFE", "PHARMACY", "TAKEAWAY", "BOTTLE-O", "NEWSAGENT", "FISH & CHIPS"]
+		11: return ["АПТЕКА", "МАГАЗИН", "ПРОДУКТЫ", "КАФЕ", "ПЕКАРНЯ", "АВТОСЕРВИС"]
+		12: return ["صيدلية", "مقهى", "مطعم", "سوبرماركت", "مخبز", "حلويات"]
+	return ["SHOP", "CAFE", "MARKET", "BAR", "STORE", "HOTEL"]
+
+
+static func lat_is_viet(la: float, lo: float) -> bool:
+	return la > 8.0 and lo >= 102.0 and lo <= 110.0
