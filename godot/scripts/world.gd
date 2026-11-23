@@ -326,6 +326,19 @@ func _tree_colliders(p: Vector3) -> void:
 		tree_shapes[i].disabled = true
 
 
+## p 위치의 수면 높이(물이 아니면 -1e9)
+func water_level_at(p: Vector3) -> float:
+	var key := geo.tile_of_local(p, Z)
+	if not chunks.has(key):
+		return -1e9
+	var c: Dictionary = chunks[key]
+	var n: int = c.n
+	var i := clampi(int(round(((p.x - c.cx) / c.ts + 0.5) * n)), 0, n)
+	var j := clampi(int(round(((p.z - c.cz) / c.ts + 0.5) * n)), 0, n)
+	var ws: PackedFloat32Array = c.ws
+	return ws[j * (n + 1) + i]
+
+
 ## p(월드 로컬)가 건물 안이면 true (margin: 건물 바깥 여유 거리 m)
 func inside_building(p: Vector3, margin := 0.0) -> bool:
 	var key := geo.tile_of_local(p, Z)
@@ -628,7 +641,7 @@ func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 		root.add_child(bb)
 	loading.erase(key)
 	var rfaces: PackedVector3Array = d["road_faces"]
-	if rfaces.size() >= 3:
+	if rfaces.size() >= 3 and not ("--noroadcol" in OS.get_cmdline_user_args()):
 		var rb := StaticBody3D.new()
 		rb.collision_layer = 1
 		var rs := ConcavePolygonShape3D.new()
@@ -642,7 +655,7 @@ func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 	_pending_ts = ts
 	_add_landmarks(key, root, c)
 	net_roads.add_chunk(key, d["net"], c)
-	chunks[key] = {"bp": d["bpolys"], "node": root, "h": d["H"], "n": n, "ts": ts, "cx": c.x, "cz": c.z, "tp": d["tree_p"], "ts_": d["tree_s"]}
+	chunks[key] = {"bp": d["bpolys"], "node": root, "h": d["H"], "n": n, "ts": ts, "cx": c.x, "cz": c.z, "tp": d["tree_p"], "ts_": d["tree_s"], "ws": d["wsurf"]}
 	if not center_done and chunks.has(geo.tile_of_local(Vector3.ZERO, Z)):
 		center_done = true
 		center_ready.emit()

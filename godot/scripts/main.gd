@@ -408,8 +408,29 @@ func _toggle_car() -> void:
 			yaw = best.heading
 
 
+var spd_last := Vector3.ZERO
+var spd_t := 0.0
+
+
 func _process(dt: float) -> void:
 	dt = minf(dt, 0.05)
+	if "--speeddbg" in OS.get_cmdline_user_args() and not loading:
+		spd_t += dt
+		if spd_t >= 2.0:
+			var pp: Vector3 = driving.global_position if driving else player.global_position
+			print("SPEEDDBG mode=", "car" if driving else ("run" if force_run else "walk"), " mps=", snappedf(Vector2(pp.x - spd_last.x, pp.z - spd_last.z).length() / spd_t, 0.01))
+			if driving and driving.get_slide_collision_count() > 0:
+				for ci in driving.get_slide_collision_count():
+					var sc2 := driving.get_slide_collision(ci)
+					print("CARHIT n=", sc2.get_normal(), " collider=", sc2.get_collider(), " speed=", driving.speed)
+			if not driving and player.get_slide_collision_count() > 0:
+				var sc := player.get_slide_collision(0)
+				print("STUCK n=", sc.get_normal(), " collider=", sc.get_collider(), " floor=", player.is_on_floor(), " pos=", player.global_position, " th=", world.height_at(player.global_position))
+			spd_last = pp
+			spd_t = 0.0
+		if "--autodrive" in OS.get_cmdline_user_args() and not driving and loaded_frames > 200 and cars.size() > 0:
+			player.global_position = cars[0].global_position + Vector3(0, 1.0, 0)
+			_toggle_car()
 	var kf := float(Input.is_key_pressed(KEY_W)) - float(Input.is_key_pressed(KEY_S))
 	var kr := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A))
 	var run_btn := Input.is_key_pressed(KEY_SHIFT)
@@ -446,6 +467,11 @@ func _process(dt: float) -> void:
 	if not loading:
 		if driving:
 			driving.drive(dt, kf, -kr, jump_btn)
+			# 물에 들어가면 급격히 느려지다 멈춘다(강/호수를 달릴 수 없음)
+			var dwy: float = world.water_level_at(driving.global_position)
+			if dwy > -1e8 and dwy - driving.global_position.y > 0.3:
+				driving.speed = move_toward(driving.speed, 0.0, 14.0 * dt)
+				driving.speed = clampf(driving.speed, -2.0, 3.5)
 			yaw = lerp_angle(yaw, driving.heading, 1.0 - exp(-2.5 * dt))
 			target = driving.global_position + Vector3(0, 1.2, 0)
 		else:
@@ -455,7 +481,7 @@ func _process(dt: float) -> void:
 			if dir.length() > 1.0:
 				dir = dir.normalized()
 			player.clap = Input.is_key_pressed(KEY_C)
-			player.move(dt, dir, run_btn or force_run, jump_btn)
+			player.move(dt, dir, run_btn or force_run, jump_btn, world.water_level_at(player.global_position))
 			target = player.global_position + Vector3(0, 1.4, 0)
 		for c in cars:
 			if c != driving:
@@ -498,6 +524,26 @@ func _process(dt: float) -> void:
 	var sp_e: float = 7.0 * atmos.night if driving else 0.0
 	for sl in player_spots:
 		sl.light_energy = sp_e
+	if "--swimtest" in OS.get_cmdline_user_args() and not loading and loaded_frames == 300:
+		var ck: Vector2i = world.geo.tile_of_local(Vector3.ZERO, world.Z)
+		var cd: Dictionary = world.chunks[ck]
+		var bestd := 1e18
+		var bp := Vector3.ZERO
+		var wsf: PackedFloat32Array = cd.ws
+		var nn: int = cd.n
+		for jj in range(0, nn + 1, 2):
+			for ii in range(0, nn + 1, 2):
+				if wsf[jj * (nn + 1) + ii] > -1e8 and wsf[jj * (nn + 1) + ii] - float(cd.h[jj * (nn + 1) + ii]) > 1.5:
+					var px: float = (float(ii) / nn - 0.5) * float(cd.ts) + float(cd.cx)
+					var pz: float = (float(jj) / nn - 0.5) * float(cd.ts) + float(cd.cz)
+					var dd: float = px * px + pz * pz
+					if dd < bestd:
+						bestd = dd
+						bp = Vector3(px, wsf[jj * (nn + 1) + ii] + 0.2, pz)
+		print("SWIMTEST water at ", bp, " dist=", sqrt(bestd))
+		player.global_position = bp
+	if "--swimtest" in OS.get_cmdline_user_args() and not loading and loaded_frames > 300 and loaded_frames % 120 == 0:
+		print("SWIMSTATE swimming=", player.swimming, " y=", player.global_position.y, " water=", world.water_level_at(player.global_position), " terrain=", world.height_at(player.global_position))
 	if "--npcdbg" in OS.get_cmdline_user_args() and loaded_frames > 600 and loaded_frames % 300 == 0:
 		var bad_c := 0
 		var worst := 0.0

@@ -12,6 +12,7 @@ var ext := 4096.0
 var H := PackedFloat32Array()
 var vcol := PackedColorArray()
 var wmask := PackedByteArray()
+var wsurf := PackedFloat32Array()   # 격자 점마다 수면 높이(물이 아니면 -1e9)
 var water_polys: Array = []
 var net_lines: Array = []
 var bpolys: Array = []
@@ -179,6 +180,8 @@ func _paint(layers: Dictionary) -> void:
 	vcol.fill(ST.GROUND[biome])
 	wmask.resize(W * W)
 	wmask.fill(0)
+	wsurf.resize(W * W)
+	wsurf.fill(-1e9)
 	for lname in ["landcover", "landuse", "park"]:
 		if not layers.has(lname):
 			continue
@@ -191,6 +194,32 @@ func _paint(layers: Dictionary) -> void:
 				continue
 			for p in f.polys:
 				_fill(_local_poly(p), c, false)
+
+
+## 물 폴리곤 안의 격자 점에 수면 높이를 기록(수영/차 감속 판정용)
+func _mark_surface(poly: Dictionary, y: float) -> void:
+	var o: PackedVector2Array = poly.o
+	var mn := o[0]
+	var mx := o[0]
+	for q in o:
+		mn = mn.min(q)
+		mx = mx.max(q)
+	var i0 := clampi(int(floor((mn.x / ts + 0.5) * N)), 0, N)
+	var i1 := clampi(int(ceil((mx.x / ts + 0.5) * N)), 0, N)
+	var j0 := clampi(int(floor((mn.y / ts + 0.5) * N)), 0, N)
+	var j1 := clampi(int(ceil((mx.y / ts + 0.5) * N)), 0, N)
+	for j in range(j0, j1 + 1):
+		for i in range(i0, i1 + 1):
+			var p := Vector2((float(i) / N - 0.5) * ts, (float(j) / N - 0.5) * ts)
+			if not Geometry2D.is_point_in_polygon(p, o):
+				continue
+			var hole := false
+			for hr in poly.h:
+				if Geometry2D.is_point_in_polygon(p, hr):
+					hole = true
+					break
+			if not hole:
+				wsurf[j * W + i] = maxf(wsurf[j * W + i], y)
 
 
 func _water(layers: Dictionary, out: Dictionary) -> void:
@@ -221,6 +250,7 @@ func _water(layers: Dictionary, out: Dictionary) -> void:
 			hs = allp
 		hs.sort()
 		var y: float = hs[int(hs.size() * 0.25)] if hs.size() > 0 else 0.0
+		_mark_surface(lpoly, y)
 		var tri := Geometry2D.triangulate_polygon(o)
 		if tri.size() < 3:
 			continue
@@ -232,6 +262,7 @@ func _water(layers: Dictionary, out: Dictionary) -> void:
 		for t in range(0, tri.size(), 3):
 			_tri(g.i, g.v, base + tri[t], base + tri[t + 1], base + tri[t + 2], Vector3.UP)
 	out["water"] = g
+	out["wsurf"] = wsurf
 
 
 # ---------------------------------------------------------------- 지형
@@ -356,8 +387,15 @@ func _roads(layers: Dictionary, out: Dictionary) -> void:
 	for k in ["major", "minor"]:
 		var gv: PackedVector3Array = G[k].v
 		var gi: PackedInt32Array = G[k].i
-		for ti in gi.size():
-			rf.append(gv[gi[ti]])
+		for ti in range(0, gi.size() - 2, 3):
+			var p0 := gv[gi[ti]]
+			var p1 := gv[gi[ti + 1]]
+			var p2 := gv[gi[ti + 2]]
+			# 급경사로 꼬인 삼각형(커브/교차로에서 생김)은 빼서 사람이 벽처럼 걸리지 않게
+			if (p1 - p0).cross(p2 - p0).normalized().y > 0.85:
+				rf.append(p0)
+				rf.append(p1)
+				rf.append(p2)
 	out["road_faces"] = rf
 	out["net"] = net_lines
 	_lamps(out, ts * 0.5)

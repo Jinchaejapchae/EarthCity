@@ -56,11 +56,21 @@ func arrive() -> void:
 	_play("standing_up", 1.0, 0.0)
 
 
-func move(dt: float, dir: Vector3, run: bool, jump: bool) -> void:
+var swimming := false
+
+
+## water_y: 지금 위치의 수면 높이(없으면 -1e9). 바닥보다 0.5m 넘게 깊으면 헤엄(느리게, 수면에 떠서)
+func move(dt: float, dir: Vector3, run: bool, jump: bool, water_y := -1e9) -> void:
+	swimming = water_y > -1e8 and water_y - global_position.y > 0.5
 	var sp := RUN if run else WALK
+	if swimming:
+		sp = 1.5 if run else 1.0
 	velocity.x = dir.x * sp
 	velocity.z = dir.z * sp
-	if is_on_floor():
+	if swimming:
+		# 목까지 잠기게 수면 아래 0.9m 높이로 떠 있는다(중력 무시)
+		velocity.y = clampf((water_y - 0.9 - global_position.y) * 5.0, -3.0, 3.0)
+	elif is_on_floor():
 		velocity.y = 4.6 if jump else -0.5
 	else:
 		velocity.y -= 16.0 * dt

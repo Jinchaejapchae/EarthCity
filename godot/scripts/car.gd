@@ -25,10 +25,13 @@ func setup(path: String, start: Vector3, head: float) -> void:
 	model.scale = Vector3.ONE * sc
 	length = 4.3
 	var cs := CollisionShape3D.new()
-	var sh := BoxShape3D.new()
-	sh.size = Vector3(1.9, 1.2, 4.2)
+	# 바닥이 둥근 캡슐(눕혀서)로: 도로 이음매/연석에 모서리가 걸리지 않게
+	var sh := CapsuleShape3D.new()
+	sh.radius = 0.85
+	sh.height = 4.3
 	cs.shape = sh
-	cs.position = Vector3(0, 0.85, 0)
+	cs.rotation.x = PI * 0.5
+	cs.position = Vector3(0, 0.9, 0)
 	add_child(cs)
 	position = start
 	heading = head
@@ -67,5 +70,8 @@ func drive(dt: float, throttle: float, steer_in: float, brake: bool) -> void:
 	v.y = velocity.y - 30.0 * dt if not is_on_floor() else -1.0
 	velocity = v
 	move_and_slide()
-	if get_slide_collision_count() > 0:
-		speed *= 0.4
+	# 바닥/도로 접촉은 제외하고 벽(수직에 가까운 면)에 부딪혔을 때만 감속
+	for ci in get_slide_collision_count():
+		if absf(get_slide_collision(ci).get_normal().y) < 0.6:
+			speed *= 0.4
+			break
