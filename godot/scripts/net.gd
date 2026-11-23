@@ -1,7 +1,7 @@
 extends Node
 # HTTP 가져오기 + 디스크 캐시(user://cache). 동시 요청 수 제한.
 
-const MAX_ACTIVE := 6
+const MAX_ACTIVE := 16
 var active := 0
 const UA := "UlsanCityGame/0.1"
 

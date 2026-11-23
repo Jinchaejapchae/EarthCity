@@ -333,14 +333,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			_toggle_car()
 		elif e.keycode == KEY_G:
 			player.drunk = not player.drunk
-		elif e.keycode == KEY_T:
-			atmos.cycle_time()
 		elif e.keycode == KEY_N:
 			settings.d.mute = not settings.d.mute
 			settings.save()
 			apply_settings()
-		elif e.keycode == KEY_K:
-			atmos.cycle_weather()
 	elif e is InputEventJoypadButton and e.pressed:
 		match e.button_index:
 			JOY_BUTTON_X:
@@ -478,7 +474,7 @@ func _process(dt: float) -> void:
 	cam.look_at(target, Vector3.UP)
 	var ll: Vector2 = world.geo.local_to_ll(target)
 	var spd := absf(driving.speed) * 3.6 if driving else 0.0
-	hud.text = "EARTH CITY · %s%s\n%.4f, %.4f · %s · WASD 이동 · Shift 달리기 · E 탑승 · / 장소검색 · T 시간 · K 날씨 · M 세계지도 · H 경적 · N 음소거 · G 술취한 걸음 · C 박수%s" % [place_name if place_name != "" else "시작 위치", "  (지도 불러오는 중...)" if loading else "", ll.x, ll.y, atmos.status_text(), ("   %d km/h" % spd) if driving else ""]
+	hud.text = "EARTH CITY · %s%s\n%.4f, %.4f · %s · WASD 이동 · Shift 달리기 · E 탑승 · / 장소검색 · M 세계지도 · H 경적 · N 음소거 · G 술취한 걸음 · C 박수%s" % [place_name if place_name != "" else "시작 위치", "  (지도 불러오는 중...)" if loading else "", ll.x, ll.y, atmos.status_text(), ("   %d km/h" % spd) if driving else ""]
 	if overlay.visible and loading:
 		ov_bar.value = world.chunks.size()
 		var warn := "\n인터넷 연결을 확인하세요" if world.chunks.is_empty() and frames > 1500 else ""

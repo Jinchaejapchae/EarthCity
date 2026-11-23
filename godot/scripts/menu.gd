@@ -59,7 +59,7 @@ func build(main_: Node, settings_: RefCounted) -> void:
 	_slider(vb, "해상도 배율 (낮추면 빨라짐)", 0.5, 1.0, 0.05, s.scale, func(v): _apply_opt("scale", v))
 	_slider(vb, "교통/보행자 수", 0.0, 1.5, 0.1, s.traffic, func(v): _apply_opt("traffic", v))
 	var help := Label.new()
-	help.text = "WASD 이동 · Shift 달리기 · E 탑승/하차 · Space 점프/브레이크 · H 경적\n/ 장소 검색 · M 세계지도 · T 시간 · K 날씨 · G 술취한 걸음 · C 박수\n게임패드: 왼쪽 스틱 이동, 오른쪽 스틱 시점, A 점프, X 탑승, Y 지도,\nRT/LT 가속/브레이크, RB 달리기, Start 메뉴"
+	help.text = "WASD 이동 · Shift 달리기 · E 탑승/하차 · Space 점프/브레이크 · H 경적\n/ 장소 검색 · M 세계지도 · G 술취한 걸음 · C 박수\n게임패드: 왼쪽 스틱 이동, 오른쪽 스틱 시점, A 점프, X 탑승, Y 지도,\nRT/LT 가속/브레이크, RB 달리기, Start 메뉴"
 	help.add_theme_font_size_override("font_size", 13)
 	help.modulate = Color(1, 1, 1, 0.75)
 	vb.add_child(help)

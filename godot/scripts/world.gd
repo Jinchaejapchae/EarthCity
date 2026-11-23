@@ -152,11 +152,15 @@ func update(p: Vector3) -> void:
 	if t == last_tile:
 		return
 	last_tile = t
+	# 가운데 타일부터(거리순) 불러와야 플레이어가 서 있는 곳이 먼저 나타난다
+	var order: Array = []
 	for dy in range(-radius, radius + 1):
 		for dx in range(-radius, radius + 1):
-			var key := Vector2i(t.x + dx, t.y + dy)
-			if not chunks.has(key) and not loading.has(key):
-				_load(key, gen)
+			order.append(Vector2i(t.x + dx, t.y + dy))
+	order.sort_custom(func(a, b): return (a - t).length_squared() < (b - t).length_squared())
+	for key in order:
+		if not chunks.has(key) and not loading.has(key):
+			_load(key, gen)
 	for key in chunks.keys():
 		if absi(key.x - t.x) > radius + 1 or absi(key.y - t.y) > radius + 1:
 			chunks[key].node.queue_free()
@@ -267,10 +271,28 @@ func height_at(p: Vector3) -> float:
 
 func _load(key: Vector2i, g: int) -> void:
 	loading[key] = true
-	var vec: PackedByteArray = await net.fetch(tile_tpl.replace("{z}", str(Z)).replace("{x}", str(key.x)).replace("{y}", str(key.y)))
-	var dem: PackedByteArray = await net.fetch(DEM_URL % [Z, key.x, key.y])
+	# 벡터 타일과 고도 타일을 동시에 받는다(예전엔 차례로)
+	var res: Array = [PackedByteArray(), PackedByteArray()]
+	var pend := [2]
+	var fetcher := func(i: int, url: String):
+		res[i] = await net.fetch(url)
+		pend[0] -= 1
+	fetcher.call(0, tile_tpl.replace("{z}", str(Z)).replace("{x}", str(key.x)).replace("{y}", str(key.y)))
+	fetcher.call(1, DEM_URL % [Z, key.x, key.y])
+	while pend[0] > 0:
+		await get_tree().process_frame
+	var vec: PackedByteArray = res[0]
+	var dem: PackedByteArray = res[1]
 	if g != gen:
 		return
+	# 가운데 타일이 먼저 나오도록, 주변 타일의 건물 생성은 가운데가 끝난 뒤에 시작
+	if not center_done and key != geo.tile_of_local(Vector3.ZERO, Z):
+		var waited := 0.0
+		while not center_done and waited < 12.0 and g == gen:
+			await get_tree().process_frame
+			waited += get_process_delta_time()
+		if g != gen:
+			return
 	var th := Thread.new()
 	var k := geo.k
 	var rg := region
@@ -282,8 +304,7 @@ func _load(key: Vector2i, g: int) -> void:
 	var data: Dictionary = th.wait_to_finish()
 	if g != gen:
 		return
-	loading.erase(key)
-	_instantiate(key, data)
+	_instantiate(key, data, g)
 
 
 func _mesh(g: Dictionary) -> ArrayMesh:
@@ -369,7 +390,7 @@ func _add_trees(root: Node3D, d: Dictionary) -> void:
 		root.add_child(mi)
 
 
-func _instantiate(key: Vector2i, d: Dictionary) -> void:
+func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 	var c := geo.tile_center(Z, key.x, key.y)
 	var root := Node3D.new()
 	root.position = c
@@ -402,6 +423,10 @@ func _instantiate(key: Vector2i, d: Dictionary) -> void:
 	cs.scale = Vector3(ts / n, 1.0, ts / n)
 	body.add_child(cs)
 	root.add_child(body)
+	await get_tree().process_frame   # 한 프레임에 몰아서 만들면 화면이 멈추므로 나눠서
+	if g != gen:
+		root.queue_free()
+		return
 	# 가로등 + 빛 무리 (MultiMesh)
 	var lp: PackedVector3Array = d["lamp_p"]
 	var ly: PackedFloat32Array = d["lamp_y"]
@@ -427,6 +452,10 @@ func _instantiate(key: Vector2i, d: Dictionary) -> void:
 		pmi.multimesh = mp
 		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(pmi)
+	await get_tree().process_frame
+	if g != gen:
+		root.queue_free()
+		return
 	# 물, 도로, 건물
 	_add_mesh(root, d["water"], mats.water, false)
 	_add_mesh(root, d["r_major"], mats.road_major, false)
@@ -436,6 +465,10 @@ func _instantiate(key: Vector2i, d: Dictionary) -> void:
 		_add_mesh(root, d["b_%d" % m], mats.facade_mat(region, m))
 	for m in 3:
 		_add_mesh(root, d["s_%d" % m], mats.shop_mats[m])
+	await get_tree().process_frame
+	if g != gen:
+		root.queue_free()
+		return
 	_add_trees(root, d)
 	_add_mesh(root, d["b_roof"], mats.roof)
 	var faces: PackedVector3Array = d["b_faces"]
@@ -448,6 +481,7 @@ func _instantiate(key: Vector2i, d: Dictionary) -> void:
 		bcs.shape = bs
 		bb.add_child(bcs)
 		root.add_child(bb)
+	loading.erase(key)
 	net_roads.add_chunk(key, d["net"], c)
 	chunks[key] = {"bp": d["bpolys"], "node": root, "h": d["H"], "n": n, "ts": ts, "cx": c.x, "cz": c.z, "tp": d["tree_p"], "ts_": d["tree_s"]}
 	if not center_done and chunks.has(geo.tile_of_local(Vector3.ZERO, Z)):
