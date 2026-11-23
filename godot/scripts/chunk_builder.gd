@@ -466,17 +466,28 @@ func _strip(pts: PackedVector2Array, width: float, lift: float, bridge: bool, g:
 		if dir.length() < 0.001:
 			dir = Vector2(1, 0)
 		var nrm := Vector2(-dir.y, dir.x) * width * 0.5
-		var y := (lerpf(h0, h1, D[i] / total) + lift + 0.6) if bridge else (hgt(P[i].x, P[i].y) + lift)
+		var yc := (lerpf(h0, h1, D[i] / total) + lift + 0.6) if bridge else (hgt(P[i].x, P[i].y) + lift)
+		# 양쪽 가장자리도 각자 지형 높이를 따른다(경사면에서 도로가 땅에 묻히거나 뜨지 않게)
+		var yl := yc
+		var yr := yc
+		if not bridge:
+			yl = hgt(P[i].x + nrm.x, P[i].y + nrm.y) + lift
+			yr = hgt(P[i].x - nrm.x, P[i].y - nrm.y) + lift
+			yc = maxf(yc, (yl + yr) * 0.5)   # 가운데는 양끝 평균보다 낮아지지 않게
 		var row: int = g.v.size()
-		g.v.append(Vector3(P[i].x + nrm.x, y, P[i].y + nrm.y))
-		g.v.append(Vector3(P[i].x - nrm.x, y, P[i].y - nrm.y))
-		g.n.append(Vector3.UP)
-		g.n.append(Vector3.UP)
+		g.v.append(Vector3(P[i].x + nrm.x, yl, P[i].y + nrm.y))
+		g.v.append(Vector3(P[i].x, yc, P[i].y))
+		g.v.append(Vector3(P[i].x - nrm.x, yr, P[i].y - nrm.y))
+		for q in 3:
+			g.n.append(Vector3.UP)
 		g.u.append(Vector2(0, D[i] / 12.0))
+		g.u.append(Vector2(0.5, D[i] / 12.0))
 		g.u.append(Vector2(1, D[i] / 12.0))
 		if prev_row >= 0:
 			_tri(g.i, g.v, prev_row, prev_row + 1, row, Vector3.UP)
 			_tri(g.i, g.v, prev_row + 1, row + 1, row, Vector3.UP)
+			_tri(g.i, g.v, prev_row + 1, prev_row + 2, row + 1, Vector3.UP)
+			_tri(g.i, g.v, prev_row + 2, row + 2, row + 1, Vector3.UP)
 		prev_row = row
 
 
@@ -598,6 +609,24 @@ func _buildings(layers: Dictionary, out: Dictionary, tx: int, ty: int) -> void:
 	out["bpolys"] = bpolys
 
 
+## 모든 꼭짓점이 같은 방향으로 꺾이는지(경사 지붕은 볼록한 모양에만 — 아니면 지붕이 찌그러짐)
+func _is_convex(o: PackedVector2Array) -> bool:
+	var n := o.size()
+	var sign_ := 0.0
+	for i in n:
+		var a := o[i]
+		var b := o[(i + 1) % n]
+		var c2 := o[(i + 2) % n]
+		var cr := (b.x - a.x) * (c2.y - b.y) - (b.y - a.y) * (c2.x - b.x)
+		if absf(cr) < 0.01:
+			continue
+		if sign_ == 0.0:
+			sign_ = signf(cr)
+		elif signf(cr) != sign_:
+			return false
+	return true
+
+
 func _poly_area(o: PackedVector2Array) -> float:
 	var a := 0.0
 	for i in o.size():
@@ -661,7 +690,7 @@ func _extrude(o: PackedVector2Array, area: float, gmin: float, bot: float, top: 
 			faces.append(t[1])
 			faces.append(t[2])
 	# 지붕
-	if house and Geometry2D.is_point_in_polygon(cen, o):
+	if house and Geometry2D.is_point_in_polygon(cen, o) and _is_convex(o):
 		var ridge := clampf(0.2 * sqrt(absf(area)), 1.6, 4.2)
 		var apex := Vector3(cen.x, top + ridge, cen.y)
 		var rc := _roof_color(hsh, true, cen)
@@ -688,6 +717,18 @@ func _extrude(o: PackedVector2Array, area: float, gmin: float, bot: float, top: 
 			faces.append(apex)
 		return
 	var tri := Geometry2D.triangulate_polygon(o)
+	if tri.size() < 3:
+		# 삼각분할 실패(겹치는/꼬인 외곽선): 뒤집어 다시, 안 되면 볼록 부채꼴로 대체
+		var rev := PackedVector2Array()
+		for qi in range(o.size() - 1, -1, -1):
+			rev.append(o[qi])
+		var t2 := Geometry2D.triangulate_polygon(rev)
+		if t2.size() >= 3:
+			for ti in t2.size():
+				tri.append(o.size() - 1 - t2[ti])
+		elif _is_convex(o):
+			for fi in range(1, o.size() - 1):
+				tri.append_array(PackedInt32Array([0, fi, fi + 1]))
 	var flat := _roof_color(hsh, false, cen)
 	if tri.size() >= 3:
 		var rb2: int = roof.v.size()

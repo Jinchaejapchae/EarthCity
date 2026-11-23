@@ -166,6 +166,11 @@ func _place(dt: float) -> void:
 	var lane := minf(w * 0.25, 2.2)
 	var base := pa.lerp(pb, k)
 	var pos := Vector3(base.x + right.x * lane, base.y + 0.03, base.z + right.y * lane)
+	# 지면 도로는 가장자리도 지형을 따라가므로 차선 위치의 지형 높이에 맞춘다(다리는 노드 높이 그대로)
+	var wd: Node3D = traffic.world
+	var lift: float = base.y - wd.height_at(base)
+	if lift < 1.5:
+		pos.y = wd.height_at(pos) + lift + 0.03
 	var yaw := atan2(-dir_s.x, -dir_s.y)
 	var slope := (pb.y - pa.y) / elen
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, atan(slope))
