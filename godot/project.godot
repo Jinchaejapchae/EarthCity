@@ -3,6 +3,7 @@ config_version=5
 [application]
 
 config/name="EARTH CITY"
+config/icon="res://icon.png"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="ULSAN CITY"
 run/main_scene="res://main.tscn"
