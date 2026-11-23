@@ -50,8 +50,9 @@ func _grp() -> Dictionary:
 	return {"v": PackedVector3Array(), "n": PackedVector3Array(), "u": PackedVector2Array(), "c": PackedColorArray(), "i": PackedInt32Array()}
 
 
-func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float) -> Dictionary:
+func build(tx: int, ty: int, vec: PackedByteArray, dem: PackedByteArray, k: float, region_: int, season_: int, lat_: float, biome_: int = 0) -> Dictionary:
 	region = region_
+	biome = biome_
 	season = season_
 	lat = lat_
 	rng.seed = tx * 7919 + ty * 104729 + 13
@@ -108,9 +109,9 @@ func _land_color(layer: String, props: Dictionary) -> Color:
 	var c: String = str(props.get("class", ""))
 	if layer == "landcover":
 		match c:
-			"grass": return Color(0.3, 0.45, 0.2)
-			"wood", "forest": return Color(0.13, 0.27, 0.12)
-			"farmland": return Color(0.5, 0.5, 0.28)
+			"grass": return ST.GRASS[biome]
+			"wood", "forest": return ST.WOOD[biome]
+			"farmland": return ST.FARM[biome]
 			"sand", "beach": return Color(0.78, 0.7, 0.5)
 			"rock": return Color(0.45, 0.42, 0.38)
 			"ice": return Color(0.9, 0.93, 0.95)
@@ -119,10 +120,10 @@ func _land_color(layer: String, props: Dictionary) -> Color:
 		match c:
 			"residential", "suburb", "neighbourhood": return Color(0.4, 0.4, 0.38)
 			"commercial", "retail", "industrial", "railway": return Color(0.36, 0.36, 0.36)
-			"cemetery", "playground", "pitch", "stadium", "track": return Color(0.3, 0.45, 0.22)
+			"cemetery", "playground", "pitch", "stadium", "track": return ST.PARK[biome]
 			"school", "university", "college", "hospital": return Color(0.42, 0.42, 0.38)
 	elif layer == "park":
-		return Color(0.27, 0.46, 0.2)
+		return ST.PARK[biome]
 	return Color(0, 0, 0, 0)
 
 
@@ -173,7 +174,7 @@ func _fill(poly: Dictionary, c: Color, water: bool) -> void:
 
 func _paint(layers: Dictionary) -> void:
 	vcol.resize(W * W)
-	vcol.fill(Color(0.36, 0.41, 0.26))
+	vcol.fill(ST.GROUND[biome])
 	wmask.resize(W * W)
 	wmask.fill(0)
 	for lname in ["landcover", "landuse", "park"]:
@@ -264,10 +265,13 @@ func _terrain(out: Dictionary) -> void:
 			else:
 				if slope > 0.3:
 					c = c.lerp(Color(0.43, 0.4, 0.36), clampf((slope - 0.3) * 3.0, 0.0, 1.0))
-				if h > 1600.0:
-					c = c.lerp(Color(0.5, 0.48, 0.45), clampf((h - 1600.0) / 600.0, 0.0, 1.0))
-				if h > 2600.0:
-					c = c.lerp(Color(0.95, 0.96, 0.98), clampf((h - 2600.0) / 500.0, 0.0, 1.0))
+				var snow := ST.snowline(lat)
+				if h > snow - 900.0:
+					c = c.lerp(Color(0.5, 0.48, 0.45), clampf((h - (snow - 900.0)) / 500.0, 0.0, 1.0))
+				if h > snow - 250.0:
+					c = c.lerp(Color(0.95, 0.96, 0.98), clampf((h - (snow - 250.0)) / 350.0, 0.0, 1.0))
+				if biome == 5 and slope < 0.25:
+					c = c.lerp(Color(0.93, 0.95, 0.97), 0.7)
 			Cc[v] = c
 			U[v] = Vector2(float(i) / N, float(j) / N)
 	for j in N:
@@ -480,6 +484,8 @@ const FLOOR_H := 3.2
 const SHOP_H := 4.2
 
 var region := 0
+var biome := 0
+const ST := preload("res://scripts/style.gd")
 var season := 1
 var lat := 0.0
 var rng := RandomNumberGenerator.new()
@@ -505,11 +511,7 @@ func _tint(hsh: int) -> Color:
 func _roof_color(hsh: int, pitched: bool) -> Color:
 	var v := 0.85 + float(hsh % 25) / 100.0
 	if pitched:
-		match region:
-			2, 3: return Color(0.55, 0.26, 0.16) * v
-			5: return Color(0.5, 0.15, 0.1) * v
-			1: return Color(0.28, 0.3, 0.33) * v
-			_: return Color(0.32, 0.27, 0.25) * v
+		return ST.ROOF[region] * v
 	return Color(0.32, 0.32, 0.33) * v
 
 
@@ -558,7 +560,7 @@ func _buildings(layers: Dictionary, out: Dictionary, tx: int, ty: int) -> void:
 					mi = 4 + (hsh % 2)
 				elif h > 22.0 and hsh % 3 == 0:
 					mi = 4
-				var house := h <= 12.0 and absf(area) < 450.0 and o.size() <= 14 and rmin <= 0.0
+				var house := h <= 12.0 and absf(area) < 450.0 and o.size() <= 14 and rmin <= 0.0 and float(hsh % 100) < float(ST.PITCH[region]) * 100.0
 				var shop := rmin <= 0.0 and h >= 9.0 and not house
 				bpolys.append(o)
 				_extrude(o, area, gmin, bot, top, G[mi], (SG[hsh % NS] if shop else {}), house, _tint(hsh), roof, faces, hsh, c)
@@ -770,8 +772,14 @@ func _blocked(x: float, z: float, li: int) -> bool:
 
 func _leaf_color(kind: int) -> Color:
 	var v := rng.randf_range(0.85, 1.12)
+	if kind == 2:
+		return Color(0.16, 0.44, 0.12) * v
 	if kind == 1:
-		return Color(0.1, 0.27, 0.13) * v
+		return (Color(0.07, 0.2, 0.1) if biome == 4 else Color(0.1, 0.27, 0.13)) * v
+	match biome:
+		1: return Color(0.08, 0.34, 0.1) * v
+		2: return Color(0.42, 0.46, 0.2) * v
+		3: return Color(0.36, 0.42, 0.22) * v
 	match season:
 		0: return Color(0.42, 0.62, 0.22) * v
 		2:
@@ -787,19 +795,42 @@ func _leaf_color(kind: int) -> Color:
 	return Color(0.2, 0.46, 0.16) * v
 
 
-func _add_tree(x: float, z: float, smin: float, smax: float, wood: bool) -> void:
-	if tp.size() >= TREE_CAP:
+func _add_tree(x: float, z: float, smin: float, smax: float, wood: bool, street := false) -> void:
+	if tp.size() >= TREE_CAP or biome == 5:
 		return
+	var h := hgt(x, z)
+	if h > ST.snowline(lat) - 700.0:
+		return # 수목한계 위
+	# 종류: 0 활엽, 1 침엽, 2 야자
 	var conifer := (0.6 if region == 5 else 0.12) + (0.25 if wood else 0.0)
-	if absf(lat) < 25.0:
-		conifer = 0.03
-	var kind := 1 if rng.randf() < conifer else 0
-	tp.append(Vector3(x, hgt(x, z), z))
+	var palm := 0.0
+	match biome:
+		1:
+			conifer = 0.0
+			palm = 0.55 if street else 0.35
+		2:
+			conifer = 0.0
+			palm = 0.75 if street else 0.5
+		3:
+			conifer = 0.3 + (0.15 if wood else 0.0)
+			palm = 0.1 if street else 0.0
+		4:
+			conifer = 0.8 if wood else 0.55
+	var r := rng.randf()
+	var kind := 0
+	if r < palm:
+		kind = 2
+	elif rng.randf() < conifer:
+		kind = 1
+	tp.append(Vector3(x, h, z))
 	ty_.append(rng.randf() * TAU)
-	tsz.append(rng.randf_range(smin, smax))
+	var sc := rng.randf_range(smin, smax)
+	if biome == 2 and kind == 0:
+		sc *= 0.6 # 사막 관목
+	tsz.append(sc)
 	tk.append(kind)
 	tc.append(_leaf_color(kind))
-	tcs.append(0.45 if (kind == 0 and season == 3) else 1.0) # 겨울 활엽수는 잎이 거의 없어 작은 가지 덩어리
+	tcs.append(0.45 if (kind == 0 and season == 3 and biome == 0) else 1.0) # 겨울 활엽수는 잎이 거의 없어 작은 가지 덩어리
 
 
 func _trees(layers: Dictionary, out: Dictionary) -> void:
@@ -836,7 +867,7 @@ func _trees(layers: Dictionary, out: Dictionary) -> void:
 						continue
 					if _blocked(px, pz, li):
 						continue
-					_add_tree(px, pz, 0.85, 1.2, false)
+					_add_tree(px, pz, 0.85, 1.2, false, true)
 				side = -side
 	# 숲/공원/묘지 나무
 	for lname in ["landcover", "park", "landuse"]:
@@ -886,6 +917,8 @@ func _trees(layers: Dictionary, out: Dictionary) -> void:
 								inhole = true
 								break
 						if inhole or _blocked(px, pz, -1):
+							continue
+						if biome == 2 and rng.randf() > 0.3:
 							continue
 						_add_tree(px, pz, 0.95, 1.6 if wood else 1.3, wood)
 					x += step

@@ -58,7 +58,9 @@ func setup(model_path: String, net_: RefCounted, traffic_: Node, from_id: int, t
 
 ## 차마다 도장 색을 살짝 다르게(팔레트 텍스처에 색을 곱함; 흰색 쪽으로 섞어 타이어/유리가 안 죽게)
 func _tint(n: Node) -> void:
-	var c := Color.from_hsv(randf(), randf_range(0.25, 0.7), randf_range(0.7, 1.0)).lerp(Color.WHITE, 0.25)
+	var rg := RandomNumberGenerator.new()
+	rg.randomize()
+	var c: Color = preload("res://scripts/style.gd").car_tint(traffic.world.region, rg)
 	for m in n.find_children("*", "MeshInstance3D", true, false):
 		var mi := m as MeshInstance3D
 		for i in mi.mesh.get_surface_count():

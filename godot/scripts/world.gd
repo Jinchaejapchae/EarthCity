@@ -12,6 +12,7 @@ const DEM_URL := "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/%d/%d/
 
 signal center_ready
 
+const StyleScript := preload("res://scripts/style.gd")
 var geo := GeoScript.new()
 var mats := MatScript.new()
 var show_trees := true
@@ -20,6 +21,8 @@ var season := 1
 var tree_trunk_mesh: ArrayMesh
 var tree_broad_mesh: ArrayMesh
 var tree_conifer_mesh: ArrayMesh
+var tree_palm_mesh: ArrayMesh
+var biome := 0
 var lamp_mesh: ArrayMesh
 var pool_mesh: QuadMesh
 var net_roads := NetScript.new()   # 도로 그래프(교통/보행자 AI 용)
@@ -69,6 +72,17 @@ func _make_tree_meshes() -> void:
 		sc.append_from(cone, 0, Transform3D(Basis.IDENTITY, Vector3(0, 3.0 + 1.9 * k, 0)))
 	sc.set_material(mats.tree_leaf)
 	tree_conifer_mesh = sc.commit()
+	# 야자: 줄기 끝에서 사방으로 처진 잎 8장(줄기는 세로로 늘린 일반 줄기 사용)
+	var sp := SurfaceTool.new()
+	sp.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 8:
+		var fr := BoxMesh.new()
+		fr.size = Vector3(0.7, 0.05, 3.4)
+		var ang := TAU * k / 8.0
+		var bs := Basis(Vector3.UP, ang) * Basis(Vector3.RIGHT, deg_to_rad(-22.0 - 6.0 * (k % 2)))
+		sp.append_from(fr, 0, Transform3D(bs, Vector3(0, 6.1, 0) + bs * Vector3(0, 0, 1.6)))
+	sp.set_material(mats.tree_leaf)
+	tree_palm_mesh = sp.commit()
 
 
 func _season_of(la: float) -> int:
@@ -136,6 +150,8 @@ func teleport(lat: float, lon: float) -> void:
 	geo.set_origin(lat, lon)
 	region = MatScript.region_of(lat, lon)
 	season = _season_of(lat)
+	biome = StyleScript.biome_of(lat, lon)
+	mats.set_style(biome)
 	if tile_tpl == "":
 		var tj: PackedByteArray = await net.fetch(TILEJSON, false)
 		var j = JSON.parse_string(tj.get_string_from_utf8())
@@ -298,7 +314,8 @@ func _load(key: Vector2i, g: int) -> void:
 	var rg := region
 	var sn := season
 	var la := geo.lat0
-	th.start(func(): return BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la))
+	var bm := biome
+	th.start(func(): return BuilderScript.new().build(key.x, key.y, vec, dem, k, rg, sn, la, bm))
 	while th.is_alive():
 		await get_tree().process_frame
 	var data: Dictionary = th.wait_to_finish()
@@ -346,11 +363,14 @@ func _add_trees(root: Node3D, d: Dictionary) -> void:
 	var tcs: PackedFloat32Array = d["tree_cs"]
 	var n0 := 0
 	var n1 := 0
+	var n2 := 0
 	for k in tk:
 		if k == 0:
 			n0 += 1
-		else:
+		elif k == 1:
 			n1 += 1
+		else:
+			n2 += 1
 	var trunk := MultiMesh.new()
 	trunk.transform_format = MultiMesh.TRANSFORM_3D
 	trunk.mesh = tree_trunk_mesh
@@ -365,10 +385,22 @@ func _add_trees(root: Node3D, d: Dictionary) -> void:
 	con.use_colors = true
 	con.mesh = tree_conifer_mesh
 	con.instance_count = n1
+	var palm := MultiMesh.new()
+	palm.transform_format = MultiMesh.TRANSFORM_3D
+	palm.use_colors = true
+	palm.mesh = tree_palm_mesh
+	palm.instance_count = n2
 	var i0 := 0
 	var i1 := 0
+	var i2 := 0
 	for i in tp.size():
 		var bs := Basis(Vector3.UP, ty[i]).scaled(Vector3.ONE * ts[i])
+		if tk[i] == 2:
+			trunk.set_instance_transform(i, Transform3D(Basis(Vector3.UP, ty[i]).scaled(Vector3(0.75, 1.9, 0.75) * ts[i]), tp[i]))
+			palm.set_instance_transform(i2, Transform3D(bs, tp[i]))
+			palm.set_instance_color(i2, tc[i])
+			i2 += 1
+			continue
 		trunk.set_instance_transform(i, Transform3D(bs, tp[i]))
 		if tk[i] == 0:
 			var cb := Basis(Vector3.UP, ty[i]).scaled(Vector3.ONE * ts[i] * tcs[i])
@@ -380,7 +412,7 @@ func _add_trees(root: Node3D, d: Dictionary) -> void:
 			con.set_instance_transform(i1, Transform3D(bs, tp[i]))
 			con.set_instance_color(i1, tc[i])
 			i1 += 1
-	for mm in [trunk, broad, con]:
+	for mm in [trunk, broad, con, palm]:
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
