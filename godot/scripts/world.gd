@@ -627,6 +627,16 @@ func _instantiate(key: Vector2i, d: Dictionary, g: int) -> void:
 		bb.add_child(bcs)
 		root.add_child(bb)
 	loading.erase(key)
+	var rfaces: PackedVector3Array = d["road_faces"]
+	if rfaces.size() >= 3:
+		var rb := StaticBody3D.new()
+		rb.collision_layer = 1
+		var rs := ConcavePolygonShape3D.new()
+		rs.set_faces(rfaces)
+		var rcs := CollisionShape3D.new()
+		rcs.shape = rs
+		rb.add_child(rcs)
+		root.add_child(rb)
 	_pending_hmap = d["H"]
 	_pending_n = n
 	_pending_ts = ts

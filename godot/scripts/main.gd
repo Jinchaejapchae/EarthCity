@@ -498,6 +498,19 @@ func _process(dt: float) -> void:
 	var sp_e: float = 7.0 * atmos.night if driving else 0.0
 	for sl in player_spots:
 		sl.light_energy = sp_e
+	if "--npcdbg" in OS.get_cmdline_user_args() and loaded_frames > 600 and loaded_frames % 300 == 0:
+		var bad_c := 0
+		var worst := 0.0
+		for nc in traffic.cars:
+			var dh: float = nc.global_position.y - world.height_at(nc.global_position)
+			if dh < 0.0:
+				bad_c += 1
+				worst = minf(worst, dh)
+		var bad_p := 0
+		for np_ in traffic.peds:
+			if np_.global_position.y - world.height_at(np_.global_position) < -0.05:
+				bad_p += 1
+		print("NPCDBG cars=", traffic.cars.size(), " under_terrain=", bad_c, " worst=", snappedf(worst, 0.01), " peds=", traffic.peds.size(), " ped_under=", bad_p)
 	if loaded_frames == 300 and "--fps" in OS.get_cmdline_user_args():
 		print("FPS ", Engine.get_frames_per_second())
 	if loaded_frames == 20 and "--moondbg" in OS.get_cmdline_user_args():

@@ -351,6 +351,14 @@ func _roads(layers: Dictionary, out: Dictionary) -> void:
 				_graph_line(pts, info, lift, brunnel == "bridge", int(f.props.get("oneway", 0)), half)
 	for k in G:
 		out["r_" + k] = G[k]
+	# 도로 충돌면(주요/일반 도로): 차와 사람이 지형이 아니라 도로 표면 위에 서도록(다리 위도 지나갈 수 있게)
+	var rf := PackedVector3Array()
+	for k in ["major", "minor"]:
+		var gv: PackedVector3Array = G[k].v
+		var gi: PackedInt32Array = G[k].i
+		for ti in gi.size():
+			rf.append(gv[gi[ti]])
+	out["road_faces"] = rf
 	out["net"] = net_lines
 	_lamps(out, ts * 0.5)
 
