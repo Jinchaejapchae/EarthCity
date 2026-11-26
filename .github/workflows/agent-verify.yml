@@ -1,0 +1,38 @@
+name: Agent Verify (EarthCity)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build single-HTML web bundle
+        run: npm run build
+
+      - name: Run Puppeteer smoke test (if Chrome available)
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v chromium-browser || command -v chromium || true)"
+          if [ -n "$CHROME_BIN" ]; then
+            echo "Running smoke test with CHROME_PATH=$CHROME_BIN"
+            CHROME_PATH="$CHROME_BIN" node tests/smoke.mjs
+          else
+            echo "SKIPPED: Chrome/Chromium binary not available on runner (do not claim smoke test passed)."
+          fi
